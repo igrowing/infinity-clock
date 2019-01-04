@@ -4,22 +4,22 @@
 // NICE TO HAVE: When alarm is cancelled, the alarm still remains set for next day.
 
 //Add the following libraries to the respective folder for you operating system. See http://arduino.cc/en/Guide/Environment
-#include <FastLED.h> // FastSPI Library from http://code.google.com/p/fastspi/
+#include <FastLED.h> // FastSPI Library version 3.1.X from https://github.com/FastLED/FastLED. Version 3.0.X has a bug: all LEDs are green by default.
 #include <Wire.h> //This is to communicate via I2C. On arduino Uno & Nano use pins A4 for SDA (yellow/orange) and A5 for SCL (green). For other boards ee http://arduino.cc/en/Reference/Wire
 #include <RTClib.h>           // Include the RTClib library to enable communication with the real time clock.
 #include <EEPROM.h>           // Include the EEPROM library to enable the storing and retrevel of settings.
-#include <Bounce.h>           // Include the Bounce library for de-bouncing issues with push buttons.
+#include <Bounce2.h>          // Include the Bounce library for de-bouncing issues with push buttons.
 #include <Encoder.h>          // Include the Encoder library to read the out puts of the rotary encoders
 
 RTC_DS1307 RTC; // Establishes the chipset of the Real Time Clock
 
 #define LEDStripPin A0 // Pin used for the data to the LED strip
-#define menuPin A3 // Pin used for the menu button (green stripe)
+#define menuPin PIN4 // A3 // Pin used for the menu button (green stripe)
 #define numLEDs 60 // Number of LEDs in strip
 
 // Setting up the LED strip
 struct CRGB leds[numLEDs];
-Encoder rotary1(2, 3); // Setting up the Rotary Encoder
+Encoder rotary1(PIN2, PIN3); // Setting up the Rotary Encoder
 
 DateTime old; // Variable to compare new and old time, to see if it has moved on.
 int rotary1Pos  = 0;
@@ -110,7 +110,7 @@ void setup()
   pinMode(menuPin, INPUT_PULLUP);     // Uses the internal 20k pull up resistor. Pre Arduino_v.1.0.1 need to be "digitalWrite(menuPin,HIGH);pinMode(menuPin,INPUT);"
     
   // Start LEDs
-  LEDS.addLeds<WS2811, LEDStripPin, GRB>(leds, numLEDs); // Structure of the LED data. I have changed to from rgb to grb, as using an alternative LED strip. Test & change these if you're getting different colours. 
+  LEDS.addLeds<WS2812B, LEDStripPin, GRB>(leds, numLEDs); // Structure of the LED data. I have changed to from rgb to grb, as using an alternative LED strip. Test & change these if you're getting different colours. 
   
   // Start RTC
   Wire.begin(); // Starts the Wire library allows I2C communication to the Real Time Clock
@@ -750,12 +750,11 @@ void runDemo(DateTime now)
 }
 
 void clearLEDs()
-{      
+{    
+  FastLED.clear();  
   for (int i = 0; i < numLEDs; i++) // Set all the LEDs to off
     {
-      leds[i].r = 0;
-      leds[i].g = 0;
-      leds[i].b = 0;
+      leds[i] = CRGB::Black;
     }
 }
 
