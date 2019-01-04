@@ -10,6 +10,8 @@ This project fixes few issues in original clock and improves usability, user exp
 # Usage
 See the PDF chart.
 
+The clock consumes about 600mA @ 5V in worst case (white demo). Therefore, usual 1A USB charger is enough to power it up.
+
 # Changes
 - Postpone write to EEPROM by 5 seconds: let user to complete the settings and then write. This saves EEPROM wear out.
 - Move rotary button from A3 to D4: this helps ease of assembly. This change is *not shown* in the breadboard PNG.
