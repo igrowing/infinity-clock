@@ -1,17 +1,19 @@
-// Add options for background settings
-// TO DO: Clean up and comment code...
-// BUG: demo state should start as mode 0 after intro
-// NICE TO HAVE: When alarm is cancelled, the alarm still remains set for next day.
+/***********************************************************
+ * Inspired by http://barkengmad.com/rise-and-shine-led-clock/
+ * and based Morgan Barke's code.
+ * 
+ * Modded by iGrowing 2019.
+ * https://github.com/igrowing/infinity-clock
+ ***********************************************************/
 
 //Add the following libraries to the respective folder for you operating system. See http://arduino.cc/en/Guide/Environment
 #include <FastLED.h> // FastSPI Library version 3.1.X from https://github.com/FastLED/FastLED. Version 3.0.X has a bug: all LEDs are green by default.
 #include <Wire.h> //This is to communicate via I2C. On arduino Uno & Nano use pins A4 for SDA (yellow/orange) and A5 for SCL (green). For other boards ee http://arduino.cc/en/Reference/Wire
 #include <RTClib.h>           // Include the RTClib library to enable communication with the real time clock.
-#include <EEPROM.h>           // Include the EEPROM library to enable the storing and retrevel of settings.
 #include <Bounce2.h>          // Include the Bounce library for de-bouncing issues with push buttons.
 #include <Encoder.h>          // Include the Encoder library to read the out puts of the rotary encoders
 
-RTC_DS1307 RTC; // Establishes the chipset of the Real Time Clock
+RTC_DS1307 RTC;     // Establishes the chipset of the Real Time Clock
 
 #define PIN_LEDS    A0    // Pin used for the data to the LED strip
 #define PIN_MENU    PIN4  // Pin used for the menu button (green stripe)
@@ -43,18 +45,18 @@ long previousDemoTime;
 long currentDemoTime;
 boolean swingBack = false;
 
-int timeHour;
-int timeMin;
-int timeSec;
-int alarmMin; // The minute of the alarm  
-int alarmHour; // The hour of the alarm 0-23
-int alarmDay = 0; // The day of the alarm
-boolean alarmSet; // Whether the alarm is set or not
-int modeAddress = 0; // Address of where mode is stored in the EEPROM
-int alarmMinAddress = 1; // Address of where alarm minute is stored in the EEPROM
-int alarmHourAddress = 2; // Address of where alarm hour is stored in the EEPROM
-int alarmSetAddress = 3; // Address of where alarm state is stored in the EEPROM
-int alarmModeAddress = 4; // Address of where the alarm mode is stored in the EEPROM
+volatile int timeHour;
+volatile int timeMin;
+volatile int timeSec;
+volatile uint8_t alarmMin; // The minute of the alarm  
+volatile uint8_t alarmHour; // The hour of the alarm 0-23
+volatile uint8_t alarmDay = 0; // The day of the alarm
+volatile boolean alarmSet; // Whether the alarm is set or not
+#define CLOCK_MODE_ADDR  0 // Address of where mode is stored in the EEPROM
+#define ALARM_MIN_ADDR   1 // Address of where alarm minute is stored in the EEPROM
+#define ALARM_HR_ADDR    2 // Address of where alarm hour is stored in the EEPROM
+#define ALARM_SET_ADDR   3 // Address of where alarm state is stored in the EEPROM
+#define ALARM_MODE_ADDR  4 // Address of where the alarm mode is stored in the EEPROM
 boolean alarmTrig = false; // Whether the alarm has been triggered or not
 long alarmTrigTime; // Milli seconds since the alarm was triggered
 boolean countDown = false;
@@ -83,24 +85,23 @@ volatile int state = 0; // Variable of the state of the clock, with the followin
 #define STATE_SET_CLOCK_SEC 6
 #define STATE_COUNTDOWN 7
 #define STATE_DEMO 8
-volatile int clockMode; // Variable of the display mode of the clock
-int modeMax = 6; // Change this when new modes are added. This is so selecting modes can go back beyond.
-volatile int alarmMode; // Variable of the alarm display mode
-int alarmModeMax = 3;
+volatile uint8_t clockMode; // Variable of the display mode of the clock
+#define CLOCK_MODE_MAX 7 // Change this when new modes are added. This is so selecting modes can go back beyond.
+volatile uint8_t alarmMode; // Variable of the alarm display mode
+#define ALARM_MODE_MAX 3
 
 Bounce menuBouncer = Bounce(PIN_MENU,20); // Instantiate a Bounce object with a 50 millisecond debounce time for the menu button
 boolean menuButton = false; 
 boolean menuPressed = false;
 boolean menuReleased = false;
-int rotaryMove = 0;
-boolean countTime = false;
+volatile uint8_t rotaryMove = 0;
+volatile boolean countTime = false;
 long menuTimePressed;
 volatile long lastRotary;
 
 int LEDPosition;
 int reverseLEDPosition;
 int pendulumPos;
-int isFiveMins;
 int odd;
 
 void setup() {
@@ -117,16 +118,22 @@ void setup() {
   Serial.begin(9600); // Starts the serial communications
 
   // Uncomment to reset all the EEPROM addresses. You will have to comment again and reload, otherwise it will not save anything each time power is cycled
-  // write a 0 to all 512 bytes of the EEPROM
+  // write a 0 to all 512 uint8_ts of the EEPROM
 //  for (int i = 0; i < 512; i++)
-//  {EEPROM.write(i, 0);}
+//  {RTC.writenvram(i, 0);}
 
   // Load any saved setting since power off, such as mode & alarm time  
-  clockMode = EEPROM.read(modeAddress); // The mode will be stored in the address "0" of the EEPROM
-  alarmMin = EEPROM.read(alarmMinAddress); // The mode will be stored in the address "1" of the EEPROM
-  alarmHour = EEPROM.read(alarmHourAddress); // The mode will be stored in the address "2" of the EEPROM
-  alarmSet = EEPROM.read(alarmSetAddress); // The mode will be stored in the address "2" of the EEPROM
-  alarmMode = EEPROM.read(alarmModeAddress);
+  clockMode = RTC.readnvram(CLOCK_MODE_ADDR); // The mode will be stored in the address "0" of the EEPROM
+  alarmMin = RTC.readnvram(ALARM_MIN_ADDR); // The mode will be stored in the address "1" of the EEPROM
+  alarmHour = RTC.readnvram(ALARM_HR_ADDR); // The mode will be stored in the address "2" of the EEPROM
+  alarmSet = RTC.readnvram(ALARM_SET_ADDR); // The mode will be stored in the address "2" of the EEPROM
+  alarmMode = RTC.readnvram(ALARM_MODE_ADDR);
+  // Sanity check for virgin device
+  clockMode = (clockMode >= CLOCK_MODE_MAX)?0:clockMode;
+  alarmMin = (alarmMin >= 60)?0:alarmMin;
+  alarmHour = (alarmHour >= 24)?0:alarmHour;
+  alarmSet = (alarmSet > 1)?false:alarmSet;
+  alarmMode = (alarmMode >= ALARM_MODE_MAX)?0:alarmMode;
   rotary1.write(0);  // Set non-interrupt mode to rotary
 
   // Prints all the saved EEPROM data to Serial
@@ -146,7 +153,6 @@ void loop() {
   // Check for any button presses and action accordingley
   menuButton = menuBouncer.update();  // Update the debouncer for the menu button and saves state to menuButton
   rotary1Pos = rotary1.read(); // Checks the rotary position
-  // if (rotary1Pos <= -2 && lastRotary - millis() >= ROTARY_SET_TIME_MS) {
   if (rotary1Pos != 0) {
     if (millis() - lastRotary >= ROTARY_SET_TIME_MS) {
       rotaryMove = (rotary1Pos < 0)?-1:1;
@@ -157,11 +163,6 @@ void loop() {
       rotary1.write(0);
     }  
   }
-  // if (rotary1Pos >= 2 && lastRotary - millis() >= ROTARY_SET_TIME_MS) {
-  //   rotaryMove = 1;
-  //   rotary1.write(0);
-  //   lastRotary = millis();
-  // }
   if (menuButton == true || rotaryMove != 0 || countTime == true) {buttonCheck(menuBouncer,now);}
   
   // clear LED array
@@ -219,12 +220,9 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
   switch (state) {
     case STATE_CLOCK: // State 0
       // Progress next mode from current mode.
-      if (rotaryMove == -1 && clockMode == 0) {
-        clockMode = modeMax;
-        rotaryMove = 0;
-      } else if(rotaryMove != 0) {
-        clockMode = clockMode + rotaryMove;
-        EEPROM.write(modeAddress,clockMode);
+      if(rotaryMove != 0) {
+        clockMode = (clockMode + rotaryMove) % CLOCK_MODE_MAX; // Never exceed CLOCK_MODE_MAX
+        RTC.writenvram(CLOCK_MODE_ADDR, clockMode);  // TODO: no state written if turning rotary left. Move this to timer.
         rotaryMove = 0;
       } else if(menuReleased == true) {
         if (menuTimePressed <= HOLD_TIME_MS) {
@@ -234,21 +232,15 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
       }
       break;
     case STATE_ALARM: // State 1
-      if (rotaryMove == -1 && alarmMode <= 0) {
-        alarmMode = alarmModeMax;
-        alarmSet = 1;
-      } else if (rotaryMove == 1 && alarmMode >= alarmModeMax) {
-        alarmMode = 0;
-        alarmSet = 0;
-      } else if (rotaryMove != 0) {
-        alarmMode = alarmMode + rotaryMove;
+      if (rotaryMove != 0) {
+        alarmMode = (alarmMode + rotaryMove) % (ALARM_MODE_MAX + 1); // // Never exceed CLOCK_MODE_MAX but 0 is alarm off
         if (alarmMode == 0) {alarmSet = 0;}
         else {alarmSet = 1;}
       }          
-      Serial.print("STATE_ALARM is "); Serial.println(STATE_ALARM);            
+      Serial.print("alarmSet is "); Serial.println(alarmSet);            
       Serial.print("alarmMode is ");  Serial.println(alarmMode);
-      EEPROM.write(alarmSetAddress,alarmSet);
-      EEPROM.write(alarmModeAddress,alarmMode);
+      RTC.writenvram(ALARM_SET_ADDR, alarmSet);
+      RTC.writenvram(ALARM_MODE_ADDR, alarmMode);
       rotaryMove = 0;
       alarmTrig = false;
       if (menuReleased == true) {
@@ -261,7 +253,7 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
       else if (rotaryMove == 1 && alarmHour >= 23) {alarmHour = 0;}
       else if (rotaryMove == -1 && alarmHour <= 0) {alarmHour = 23;}
       else if (rotaryMove != 0) {alarmHour = alarmHour + rotaryMove;}
-      EEPROM.write(alarmHourAddress,alarmHour);
+      RTC.writenvram(ALARM_HR_ADDR, alarmHour);
       rotaryMove = 0;
       break;
     case STATE_SET_ALARM_MIN: // State 3
@@ -272,48 +264,27 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
       } else if (rotaryMove == 1 && alarmMin >= 59) {alarmMin = 0;}
         else if (rotaryMove == -1 && alarmMin <= 0) {alarmMin = 59;}
         else if (rotaryMove != 0) {alarmMin = alarmMin + rotaryMove;}
-      EEPROM.write(alarmMinAddress,alarmMin);
+      RTC.writenvram(ALARM_MIN_ADDR, alarmMin);
       rotaryMove = 0;
       break;
     case STATE_SET_CLOCK_HR: // State 4
-    // TODO: optimize this by math
       if (menuReleased == true) {state = STATE_SET_CLOCK_MIN;}
-      else if (rotaryMove == 1 && now.hour() == 23) {
-        RTC.adjust(DateTime(now.year(), now.month(), now.day(), 0, now.minute(), now.second()));
-        rotaryMove = 0;
-      } else if (rotaryMove == -1 && now.hour() == 0) {
-        RTC.adjust(DateTime(now.year(), now.month(), now.day(), 23, now.minute(), now.second()));
-        rotaryMove = 0;
-      } else if (rotaryMove != 0) {
-        RTC.adjust(DateTime(now.year(), now.month(), now.day(), (now.hour() + rotaryMove), now.minute(), now.second()));
+      else if (rotaryMove != 0) {
+        RTC.adjust(DateTime(now.year(), now.month(), now.day(), (now.hour() + rotaryMove) % 24, now.minute(), now.second()));
         rotaryMove = 0;
       }
       break;
     case STATE_SET_CLOCK_MIN: // State 5
-    // TODO: optimize this by math
       if (menuReleased == true) {state = STATE_SET_CLOCK_SEC;}
-      else if (rotaryMove == 1 && now.minute() == 59) {
-        RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), 0, now.second()));
-        rotaryMove = 0;
-      } else if (rotaryMove == -1 && now.minute() == 0) {
-        RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), 59, now.second()));
-        rotaryMove = 0;
-      } else if (rotaryMove != 0) {
-        RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), (now.minute() + rotaryMove), now.second()));
+      else if (rotaryMove != 0) {
+        RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), (now.minute() + rotaryMove) % 60, now.second()));
         rotaryMove = 0;
       }
       break;
     case STATE_SET_CLOCK_SEC: // State 6
-    // TODO: optimize this by math
       if (menuReleased == true) {state = STATE_CLOCK;}
-      else if (rotaryMove == 1 && now.second() == 59) {
-        RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), now.minute(), 0));
-        rotaryMove = 0;
-      } else if (rotaryMove == -1 && now.second() == 0) {
-        RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), now.minute(), 59));
-        rotaryMove = 0;
-      } else if (rotaryMove != 0) {
-        RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), now.minute(), (now.second() + rotaryMove)));
+      else if (rotaryMove != 0) {
+        RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), now.minute(), (now.second() + rotaryMove) % 60));
         rotaryMove = 0;
       }
       break;
@@ -339,7 +310,7 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
       rotaryMove = 0;
       break;
     case STATE_DEMO: // State 8
-      if(menuReleased == true) {state = STATE_CLOCK; clockMode = EEPROM.read(modeAddress);} // if displaying the demo, menu button pressed then the clock will display and restore to the mode before demo started
+      if(menuReleased == true) {state = STATE_CLOCK; clockMode = RTC.readnvram(CLOCK_MODE_ADDR);} // if displaying the demo, menu button pressed then the clock will display and restore to the mode before demo started
       break;
   }
   if (state == STATE_SET_CLOCK_HR || state == STATE_SET_CLOCK_MIN || state == STATE_SET_CLOCK_SEC) printDateTime();
@@ -350,8 +321,7 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
 
 void setAlarmDisplay() {
   for (int i = 0; i < NUM_LEDS; i++) {
-    isFiveMins = i%5;
-    if (isFiveMins == 0) {
+    if (i%5 == 0) {  // Apply to every 5th LED (5-minute ticks)
         leds[i].r = 100;
         leds[i].g = 100;
         leds[i].b = 100;
@@ -360,8 +330,7 @@ void setAlarmDisplay() {
 
   if (alarmSet == 0) {
     for (int i = 0; i < NUM_LEDS; i++) { // Sets background to red, to state that alarm IS NOT set
-      isFiveMins = i%5;
-      if (isFiveMins == 0) {
+      if (i%5 == 0) {  // Apply to every 5th LED (5-minute ticks)
         leds[i].r = 20;
         leds[i].g = 0;
         leds[i].b = 0;
@@ -369,8 +338,7 @@ void setAlarmDisplay() {
     }     
   } else {
     for (int i = 0; i < NUM_LEDS; i++) { // Sets background to green, to state that alarm IS set
-      isFiveMins = i%5;
-      if (isFiveMins == 0) {
+      if (i%5 == 0) {  // Apply to every 5th LED (5-minute ticks)
         leds[i].r = 0;
         leds[i].g = 20;
         leds[i].b = 0;
@@ -399,8 +367,7 @@ void setAlarmDisplay() {
 
 void setClockDisplay(DateTime now) {
   for (int i = 0; i < NUM_LEDS; i++) {
-    isFiveMins = i%5;
-    if (isFiveMins == 0) {
+    if (i%5 == 0) {  // Apply to every 5th LED (5-minute ticks)
       leds[i].r = 10;
       leds[i].g = 10;
       leds[i].b = 10;
@@ -536,7 +503,7 @@ void runDemo(DateTime now) {
   switch (demoIntro) {
     case 0:
       timeDisplay(now);
-      if (currentDemoTime - previousDemoTime > DEMO_TIME_S) {previousDemoTime = currentDemoTime; clockMode++;}  // TODO: Remove clockMode++???
+      if (currentDemoTime - previousDemoTime > DEMO_TIME_S) {previousDemoTime = currentDemoTime;}
       break;
     case 1:
       for (int i = 0; i < j; i++) {leds[i].r = 255;}
@@ -578,7 +545,7 @@ void runDemo(DateTime now) {
       if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
       if (j == NUM_LEDS) {
         demoIntro = 0;
-        clockMode = 0;
+        clockMode = RTC.readnvram(CLOCK_MODE_ADDR);  // Return to kept clock mode
         Serial.print("Mode is "); Serial.println(clockMode);
         Serial.print("State is "); Serial.println(state);
       }
@@ -677,8 +644,7 @@ void smoothSecond(DateTime now) {
 
 void outlineClock(DateTime now) {
   for (int i = 0; i < NUM_LEDS; i++) {
-    isFiveMins = i%5;
-    if (isFiveMins == 0) {
+    if (i%5 == 0) {  // Apply to every 5th LED (5-minute ticks)
       leds[i].r = 100;
       leds[i].g = 100;
       leds[i].b = 100;
@@ -742,21 +708,18 @@ void simplePendulum(DateTime now) {
 
 void breathingClock(DateTime now) {
   if (alarmTrig == false) {
-    breathBrightness = 15.0*(1.0+sin((3.14*millis()/2000.0)-1.57));
+    breathBrightness = 30.0*(1.0+sin((3.14*millis()/2000.0)-1.57)) + 2;
     for (int i = 0; i < NUM_LEDS; i++) {
-      isFiveMins = i%5;
-      if (isFiveMins == 0) {
-        leds[i].r = breathBrightness + 5;
-        leds[i].g = breathBrightness + 5;
-        leds[i].b = breathBrightness + 5;
+      if (i%5 == 0) {  // Apply to every 5th LED (5-minute ticks)
+        leds[i].r = breathBrightness;
+        leds[i].g = breathBrightness;
+        leds[i].b = breathBrightness;
       } else {
-        leds[i].r = 0;
-        leds[i].g = 0;
-        leds[i].b = 0;
+        leds[i] = CRGB::Black;
       }
     }
   }
-  unsigned char hourPos = ((now.hour()%12)*5 + (now.minute()+6)/12);
+  unsigned char hourPos = (now.hour()%12)*5 + (now.minute()+6)/12;
   leds[(hourPos+LED_OFFSET+59)%60].r = 255;   
   leds[(hourPos+LED_OFFSET)%60].r = 255;
   leds[(hourPos+LED_OFFSET+1)%60].r = 255;
@@ -765,49 +728,46 @@ void breathingClock(DateTime now) {
 }
 
 
-/*
-// Cycle through the color wheel, equally spaced around the belt
-void rainbowCycle(uint8_t wait)
-{
-  uint16_t i, j;
-  for (j=0; j < 384 * 5; j++)
-    {     // 5 cycles of all 384 colors in the wheel
-      for (i=0; i < NUM_LEDS; i++)
-        {
-          // tricky math! we use each pixel as a fraction of the full 384-color
-          // wheel (thats the i / strip.numPixels() part)
-          // Then add in j which makes the colors go around per pixel
-          // the % 384 is to make the wheel cycle around
-          strip.setPixelColor(i, Wheel(((i * 384 / NUM_LEDS) + j) % 384));
-        }
-      delay(wait);
-    }
-}
+// // Cycle through the color wheel, equally spaced around the belt
+// void rainbowCycle(uint8_t wait)
+// {
+//   uint16_t i, j1;
+//   for (j1=0; j1 < 384 * 5; j1++) {     // 5 cycles of all 384 colors in the wheel
+//     for (i=0; i < NUM_LEDS; i++)  {
+//       // tricky math! we use each pixel as a fraction of the full 384-color
+//       // wheel (thats the i / strip.numPixels() part)
+//       // Then add in j which makes the colors go around per pixel
+//       // the % 384 is to make the wheel cycle around
+//       uint8_t colors[3];
+//       wheel(((i * 384 / NUM_LEDS) + j) % 384, colors);
+//       leds[i+LED_OFFSET].r = colors[0];
+//       leds[i+LED_OFFSET].g = colors[1];
+//       leds[i+LED_OFFSET].b = colors[2];
+//     }
+//     delay(wait);
+//   }
+// }
 
-//Input a value 0 to 384 to get a color value.
-//The colours are a transition r - g - b - back to r
+// //Input a value 0 to 384 to get a color value.
+// //The colours are a transition r - g - b - back to r
+// void wheel(uint16_t WheelPos, uint8_t colors[]) {
+//   switch(WheelPos / 128)
+//   {
+//     case 0:
+//       colors[0] = 127 - WheelPos % 128; // red down
+//       colors[1] = WheelPos % 128;       // green up
+//       colors[2] = 0;                    // blue off
+//       break;
+//     case 1:
+//       colors[1] = 127 - WheelPos % 128; // green down
+//       colors[2] = WheelPos % 128;       // blue up
+//       colors[0] = 0;                    // red off
+//       break;
+//     case 2:
+//       colors[2] = 127 - WheelPos % 128; // blue down
+//       colors[0] = WheelPos % 128;       // red up
+//       colors[1] = 0;                    // green off
+//       break;
+//   }
+// }
 
-uint32_t Wheel(uint16_t WheelPos)
-{
-  byte r, g, b;
-  switch(WheelPos / 128)
-  {
-    case 0:
-      r = 127 - WheelPos % 128; // red down
-      g = WheelPos % 128;       // green up
-      b = 0;                    // blue off
-      break;
-    case 1:
-      g = 127 - WheelPos % 128; // green down
-      b = WheelPos % 128;       // blue up
-      r = 0;                    // red off
-      break;
-    case 2:
-      b = 127 - WheelPos % 128; // blue down
-      r = WheelPos % 128;       // red up
-      g = 0;                    // green off
-      break;
-  }
-  return(strip.Color(r,g,b));
-}
-*/
