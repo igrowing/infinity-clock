@@ -100,11 +100,10 @@ int rotaryTime = 1000;
 int LEDPosition;
 int reverseLEDPosition;
 int pendulumPos;
-int fiveMins;
+int isFiveMins;
 int odd;
 
-void setup()
-{
+void setup() {
   // Set up all pins
   pinMode(PIN_MENU, INPUT_PULLUP);     // Uses the internal 20k pull up resistor. Pre Arduino_v.1.0.1 need to be "digitalWrite(PIN_MENU,HIGH);pinMode(PIN_MENU,INPUT);"
     
@@ -141,45 +140,37 @@ void setup()
 }
 
 
-void loop()
-{
+void loop() {
   DateTime now = RTC.now(); // Fetches the time from RTC
   
   // Check for any button presses and action accordingley
   menuButton = menuBouncer.update();  // Update the debouncer for the menu button and saves state to menuButton
   rotary1Pos = rotary1.read(); // Checks the rotary position
-  if (rotary1Pos <= -2 && lastRotary - millis() >= rotaryTime)
-    {
-      rotaryMove = -1;
-      rotary1.write(0);
-      lastRotary = millis();
-    } 
-  if (rotary1Pos >= 2 && lastRotary - millis() >= rotaryTime)
-    {
-      rotaryMove = 1;
-      rotary1.write(0);
-      lastRotary = millis();
-    }
+  if (rotary1Pos <= -2 && lastRotary - millis() >= rotaryTime) {
+    rotaryMove = -1;
+    rotary1.write(0);
+    lastRotary = millis();
+  } 
+  if (rotary1Pos >= 2 && lastRotary - millis() >= rotaryTime) {
+    rotaryMove = 1;
+    rotary1.write(0);
+    lastRotary = millis();
+  }
   if (menuButton == true || rotaryMove != 0 || countTime == true) {buttonCheck(menuBouncer,now);}
   
   // clear LED array
   memset(leds, 0, NUM_LEDS * 3);
   
   // Check alarm and trigger if the time matches
-  if (alarmSet == true && alarmDay != now.day()) // The alarmDay statement ensures it is a newly set alarm or repeat from previous day, not within the minute of an alarm cancel.
-    {
-      if (alarmTrig == false) {alarm(now);}
-      else {alarmDisplay();}
-    }
+  if (alarmSet == true && alarmDay != now.day()) { // The alarmDay statement ensures it is a newly set alarm or repeat from previous day, not within the minute of an alarm cancel.
+    if (alarmTrig == false) {alarm(now);}
+    else {alarmDisplay();}
+  }
  // Check the Countdown Timer
-  if (countDown == true)
-    {
-      currentCountDown = countDownTime + startCountDown - now.unixtime();
-      if ( currentCountDown <= 0)
-        {
-          state = STATE_COUNTDOWN;
-        }
-    } 
+  if (countDown == true) {
+    currentCountDown = countDownTime + startCountDown - now.unixtime();
+    if ( currentCountDown <= 0) state = STATE_COUNTDOWN;
+  } 
   // Set the time LED's
   if (state == STATE_SET_CLOCK_HR || state == STATE_SET_CLOCK_MIN || state == STATE_SET_CLOCK_SEC) {setClockDisplay(now);}
   else if (state == STATE_ALARM || state == STATE_SET_ALARM_HR || state == STATE_SET_ALARM_MIN) {setAlarmDisplay();}
@@ -192,8 +183,7 @@ void loop()
 }
 
 void printDateTime() {
-  DateTime now = RTC.now();
-      
+  DateTime now = RTC.now();      
   Serial.print("Hour time is... "); Serial.println(now.hour());
   Serial.print("Min time is... "); Serial.println(now.minute());
   Serial.print("Sec time is... "); Serial.println(now.second());
@@ -202,580 +192,427 @@ void printDateTime() {
   Serial.print("Day is... "); Serial.println(now.day());
 }
 
-void buttonCheck(Bounce menuBouncer, DateTime now)
-{
-  // countTime = ! menuBouncer.read();  // Does the same as 10 lines below.
-  if (menuBouncer.fallingEdge()) // Checks if a button is pressed, if so sets countTime to true
-    {
-      countTime = true;
-      // Serial.println("rising edge");
+void buttonCheck(Bounce menuBouncer, DateTime now) {
+  countTime = ! menuBouncer.read();  // Does the same as 10 lines below.
+  if (countTime) { // otherwise will menuBouncer.duration will 
+    menuTimePressed = menuBouncer.duration();
+    if (menuTimePressed >= (HOLD_TIME_MS - 100) && menuTimePressed <= HOLD_TIME_MS) { // long click
+      // blink display while button is pressed to indicate "entered adjust mode"
+      clearLEDs();
+      LEDS.show();
+      delay(100);
     }
-  if (menuBouncer.risingEdge()) // Checks if a button is released,
-    {
-      countTime = false;
-      // Serial.println("rising edge");
-    } // if so sets countTime to false. Now the ...TimePressed will not be updated when enters the buttonCheck,
-
-  if (countTime) // otherwise will menuBouncer.duration will 
-    {
-      menuTimePressed = menuBouncer.duration();
-      if (menuTimePressed >= (HOLD_TIME_MS - 100) && menuTimePressed <= HOLD_TIME_MS)  // Short click
-        {  // stop display while button is pressed
-          clearLEDs();
-          LEDS.show();
-          delay(100);
-        }
-    }
+  }
   menuReleased = menuBouncer.risingEdge();
-  // if (menuPressed == true) {Serial.println("Menu Button Pressed");}
-  // if (menuReleased == true) {Serial.println("Menu Button Released");}
-  // Serial.print("Menu Bounce Duration ");
-  // Serial.println(menuTimePressed);
-  if (alarmTrig == true)
-    {
+  if (alarmTrig == true) {
+    alarmTrig = false;
+    alarmDay = now.day(); // When the alarm is cancelled it will not display until next day. As without it, it would start again if within a minute, or completely turn off the alarm.
+    delay(300); // let time for the button to be released
+    return; // This return exits the buttonCheck function, so no actions are performs
+  }  
+  switch (state) {
+    case STATE_CLOCK: // State 0
+      // Progress next mode from current mode.
+      if (rotaryMove == -1 && clockMode == 0) {
+        clockMode = modeMax;
+        rotaryMove = 0;
+      } else if(rotaryMove != 0) {
+        clockMode = clockMode + rotaryMove;
+        EEPROM.write(modeAddress,clockMode);
+        rotaryMove = 0;
+      } else if(menuReleased == true) {
+        if (menuTimePressed <= HOLD_TIME_MS) {
+          state = STATE_ALARM; 
+          newSecTime = millis();
+        } else state = STATE_SET_CLOCK_HR;
+      }
+      break;
+    case STATE_ALARM: // State 1
+      if (rotaryMove == -1 && alarmMode <= 0) {
+        alarmMode = alarmModeMax;
+        alarmSet = 1;
+      } else if (rotaryMove == 1 && alarmMode >= alarmModeMax) {
+        alarmMode = 0;
+        alarmSet = 0;
+      } else if (rotaryMove != 0) {
+        alarmMode = alarmMode + rotaryMove;
+        if (alarmMode == 0) {alarmSet = 0;}
+        else {alarmSet = 1;}
+      }          
+      Serial.print("STATE_ALARM is "); Serial.println(STATE_ALARM);            
+      Serial.print("alarmMode is ");  Serial.println(alarmMode);
+      EEPROM.write(alarmSetAddress,alarmSet);
+      EEPROM.write(alarmModeAddress,alarmMode);
+      rotaryMove = 0;
       alarmTrig = false;
-      alarmDay = now.day(); // When the alarm is cancelled it will not display until next day. As without it, it would start again if within a minute, or completely turn off the alarm.
-      delay(300); // let time for the button to be released
-      return; // This return exits the buttonCheck function, so no actions are performs
-    }  
-  switch (state)
-    {
-      case STATE_CLOCK: // State 0
-        if (rotaryMove == -1 && clockMode == 0)
-          {
-            clockMode = modeMax;
-            rotaryMove = 0;
-          }
-        else if(rotaryMove != 0) //if displaying the clock, advance button is pressed & released, then clockMode will change
-          {
-            clockMode = clockMode + rotaryMove;
-            EEPROM.write(modeAddress,clockMode);
-            rotaryMove = 0;
-          }
-        else if(menuReleased == true) 
-          {
-            if (menuTimePressed <= HOLD_TIME_MS) {state = STATE_ALARM; newSecTime = millis();}// if displaying the clock, menu button is pressed & released, then Alarm is displayed 
-            else {state = STATE_SET_CLOCK_HR;} // if displaying the clock, menu button is held & released, then clock hour can be set
-          }
-        break;
-      case STATE_ALARM: // State 1
-        if (rotaryMove == -1 && alarmMode <= 0)
-          {
-            alarmMode = alarmModeMax;
-            alarmSet = 1;
-          }
-        else if (rotaryMove == 1 && alarmMode >= alarmModeMax)
-          {
-            alarmMode = 0;
-            alarmSet = 0;
-          }
-        else if (rotaryMove != 0)
-          {
-            alarmMode = alarmMode + rotaryMove;
-            if (alarmMode == 0) {alarmSet = 0;}
-            else {alarmSet = 1;}
-          }          
-        Serial.print("STATE_ALARM is "); Serial.println(STATE_ALARM);            
-        Serial.print("alarmMode is ");  Serial.println(alarmMode);
-        EEPROM.write(alarmSetAddress,alarmSet);
-        EEPROM.write(alarmModeAddress,alarmMode);
-        rotaryMove = 0;
-        alarmTrig = false;
-        if (menuReleased == true) 
-          {
-            if (menuTimePressed <= HOLD_TIME_MS) {state = STATE_COUNTDOWN; j = 0;}// if displaying the alarm time, menu button is pressed & released, then clock is displayed
-            else {state = STATE_SET_ALARM_HR;} // if displaying the alarm time, menu button is held & released, then alarm hour can be set
-          }
-        break;
-      case STATE_SET_ALARM_HR: // State 2
-        if (menuReleased == true) {state = STATE_SET_ALARM_MIN;}
-        else if (rotaryMove == 1 && alarmHour >= 23) {alarmHour = 0;}
-        else if (rotaryMove == -1 && alarmHour <= 0) {alarmHour = 23;}
-        else if (rotaryMove != 0) {alarmHour = alarmHour + rotaryMove;}
-        EEPROM.write(alarmHourAddress,alarmHour);
-        rotaryMove = 0;
-        break;
-      case STATE_SET_ALARM_MIN: // State 3
-        if (menuReleased == true)
-          {
-            state = STATE_ALARM;
-            alarmDay = 0;
-            newSecTime = millis();
-          }
-        else if (rotaryMove == 1 && alarmMin >= 59) {alarmMin = 0;}
+      if (menuReleased == true) {
+        if (menuTimePressed <= HOLD_TIME_MS) {state = STATE_COUNTDOWN; j = 0;}// if displaying the alarm time, menu button is pressed & released, then clock is displayed
+        else {state = STATE_SET_ALARM_HR;} // if displaying the alarm time, menu button is held & released, then alarm hour can be set
+      }
+      break;
+    case STATE_SET_ALARM_HR: // State 2
+      if (menuReleased == true) {state = STATE_SET_ALARM_MIN;}
+      else if (rotaryMove == 1 && alarmHour >= 23) {alarmHour = 0;}
+      else if (rotaryMove == -1 && alarmHour <= 0) {alarmHour = 23;}
+      else if (rotaryMove != 0) {alarmHour = alarmHour + rotaryMove;}
+      EEPROM.write(alarmHourAddress,alarmHour);
+      rotaryMove = 0;
+      break;
+    case STATE_SET_ALARM_MIN: // State 3
+      if (menuReleased == true) {
+        state = STATE_ALARM;
+        alarmDay = 0;
+        newSecTime = millis();
+      } else if (rotaryMove == 1 && alarmMin >= 59) {alarmMin = 0;}
         else if (rotaryMove == -1 && alarmMin <= 0) {alarmMin = 59;}
         else if (rotaryMove != 0) {alarmMin = alarmMin + rotaryMove;}
-        EEPROM.write(alarmMinAddress,alarmMin);
+      EEPROM.write(alarmMinAddress,alarmMin);
+      rotaryMove = 0;
+      break;
+    case STATE_SET_CLOCK_HR: // State 4
+    // TODO: optimize this by math
+      if (menuReleased == true) {state = STATE_SET_CLOCK_MIN;}
+      else if (rotaryMove == 1 && now.hour() == 23) {
+        RTC.adjust(DateTime(now.year(), now.month(), now.day(), 0, now.minute(), now.second()));
         rotaryMove = 0;
-        break;
-      case STATE_SET_CLOCK_HR: // State 4
-      // TODO: optimize this by math
-        if (menuReleased == true) {state = STATE_SET_CLOCK_MIN;}
-        else if (rotaryMove == 1 && now.hour() == 23)
-          {
-            RTC.adjust(DateTime(now.year(), now.month(), now.day(), 0, now.minute(), now.second()));
-            rotaryMove = 0;
-          }
-        else if (rotaryMove == -1 && now.hour() == 0)
-          {
-            RTC.adjust(DateTime(now.year(), now.month(), now.day(), 23, now.minute(), now.second()));
-            rotaryMove = 0;
-          }
-        else if (rotaryMove != 0)
-          {
-            RTC.adjust(DateTime(now.year(), now.month(), now.day(), (now.hour() + rotaryMove), now.minute(), now.second()));
-            rotaryMove = 0;
-          }
-        break;
-      case STATE_SET_CLOCK_MIN: // State 5
-      // TODO: optimize this by math
-        if (menuReleased == true) {state = STATE_SET_CLOCK_SEC;}
-        else if (rotaryMove == 1 && now.minute() == 59)
-          {
-            RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), 0, now.second()));
-            rotaryMove = 0;
-          }
-        else if (rotaryMove == -1 && now.minute() == 0)
-          {
-            RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), 59, now.second()));
-            rotaryMove = 0;
-          }
-        else if (rotaryMove != 0)
-          {
-            RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), (now.minute() + rotaryMove), now.second()));
-            rotaryMove = 0;
-          }
-        break;
-      case STATE_SET_CLOCK_SEC: // State 6
-      // TODO: optimize this by math
-        if (menuReleased == true) {state = STATE_CLOCK;}
-        else if (rotaryMove == 1 && now.second() == 59)
-          {
-            RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), now.minute(), 0));
-            rotaryMove = 0;
-          }
-        else if (rotaryMove == -1 && now.second() == 0)
-          {
-            RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), now.minute(), 59));
-            rotaryMove = 0;
-          }
-        else if (rotaryMove != 0)
-          {
-            RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), now.minute(), (now.second() + rotaryMove)));
-            rotaryMove = 0;
-          }
-        break;
-      case STATE_COUNTDOWN: // State 7
-        if(menuReleased == true) 
-          {
-            if (menuTimePressed <= HOLD_TIME_MS)
-              {
-                if (countDown == true && countDownTime <= 0) {countDown = false; countDownTime = 0; currentCountDown = 0;}
-                else if (countDown == false && countDownTime > 0) {countDown = true; startCountDown = now.unixtime();}
-                else {state = STATE_DEMO; demoIntro = 1; j = 0;}// if displaying the count down, menu button is pressed & released, then demo State is displayed 
-              } 
-            else {countDown = false; countDownTime = 0; currentCountDown = 0; j = 0;} // if displaying the clock, menu button is held & released, then the count down is reset
-          }
-        else if (rotaryMove == -1 && currentCountDown <= 0)
-          {
-            countDown = false;
-            countDownTime = 0;
-            currentCountDown = 0;
-            demoIntro = 0;          
-          }
-        else if (rotaryMove == 1 && currentCountDown >= 3600)
-          {
-            countDown = false;
-            countDownTime = 3600;           
-          }
-        else if (rotaryMove != 0) //if displaying the count down, rotary encoder is turned then will change accordingley
-          {
-            countDown = false;
-            countDownTime = currentCountDown - currentCountDown%60 + rotaryMove*60; // This rounds the count down minute up to the next minute
-          }
+      } else if (rotaryMove == -1 && now.hour() == 0) {
+        RTC.adjust(DateTime(now.year(), now.month(), now.day(), 23, now.minute(), now.second()));
         rotaryMove = 0;
-        break;
-      case STATE_DEMO: // State 8
-        if(menuReleased == true) {state = STATE_CLOCK; clockMode = EEPROM.read(modeAddress);} // if displaying the demo, menu button pressed then the clock will display and restore to the mode before demo started
-        break;
-    }
+      } else if (rotaryMove != 0) {
+        RTC.adjust(DateTime(now.year(), now.month(), now.day(), (now.hour() + rotaryMove), now.minute(), now.second()));
+        rotaryMove = 0;
+      }
+      break;
+    case STATE_SET_CLOCK_MIN: // State 5
+    // TODO: optimize this by math
+      if (menuReleased == true) {state = STATE_SET_CLOCK_SEC;}
+      else if (rotaryMove == 1 && now.minute() == 59) {
+        RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), 0, now.second()));
+        rotaryMove = 0;
+      } else if (rotaryMove == -1 && now.minute() == 0) {
+        RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), 59, now.second()));
+        rotaryMove = 0;
+      } else if (rotaryMove != 0) {
+        RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), (now.minute() + rotaryMove), now.second()));
+        rotaryMove = 0;
+      }
+      break;
+    case STATE_SET_CLOCK_SEC: // State 6
+    // TODO: optimize this by math
+      if (menuReleased == true) {state = STATE_CLOCK;}
+      else if (rotaryMove == 1 && now.second() == 59) {
+        RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), now.minute(), 0));
+        rotaryMove = 0;
+      } else if (rotaryMove == -1 && now.second() == 0) {
+        RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), now.minute(), 59));
+        rotaryMove = 0;
+      } else if (rotaryMove != 0) {
+        RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), now.minute(), (now.second() + rotaryMove)));
+        rotaryMove = 0;
+      }
+      break;
+    case STATE_COUNTDOWN: // State 7
+      if(menuReleased == true) {  // Count down or switch to non-countdown mode if finished counting. 
+        if (menuTimePressed <= HOLD_TIME_MS) {
+          if (countDown == true && countDownTime <= 0) {countDown = false; countDownTime = 0; currentCountDown = 0;}
+          else if (countDown == false && countDownTime > 0) {countDown = true; startCountDown = now.unixtime();}
+          else {state = STATE_DEMO; demoIntro = 1; j = 0;}// if displaying the count down, menu button is pressed & released, then demo State is displayed 
+        } else {countDown = false; countDownTime = 0; currentCountDown = 0; j = 0;} // if displaying the clock, menu button is held & released, then the count down is reset
+      } else if (rotaryMove == -1 && currentCountDown <= 0) {  // Setting mode for count down
+        countDown = false;
+        countDownTime = 0;
+        currentCountDown = 0;
+        demoIntro = 0;          
+      } else if (rotaryMove == 1 && currentCountDown >= 3600) {
+        countDown = false;
+        countDownTime = 3600;           
+      } else if (rotaryMove != 0) {
+        countDown = false;
+        countDownTime = currentCountDown - currentCountDown%60 + rotaryMove*60; // This rounds the count down minute up to the next minute
+      }
+      rotaryMove = 0;
+      break;
+    case STATE_DEMO: // State 8
+      if(menuReleased == true) {state = STATE_CLOCK; clockMode = EEPROM.read(modeAddress);} // if displaying the demo, menu button pressed then the clock will display and restore to the mode before demo started
+      break;
+  }
   if (state == STATE_SET_CLOCK_HR || state == STATE_SET_CLOCK_MIN || state == STATE_SET_CLOCK_SEC) printDateTime();
   if (menuReleased || rotaryMove !=0) {countTime = false;}
   Serial.print("Mode is ");  Serial.println(clockMode);
   Serial.print("State is ");  Serial.println(state);
 }
 
-void setAlarmDisplay()
-{
+void setAlarmDisplay() {
+  for (int i = 0; i < NUM_LEDS; i++) {
+    isFiveMins = i%5;
+    if (isFiveMins == 0) {
+        leds[i].r = 100;
+        leds[i].g = 100;
+        leds[i].b = 100;
+      }
+  }
 
-  for (int i = 0; i < NUM_LEDS; i++)
-    {
-      fiveMins = i%5;
-      if (fiveMins == 0)
-        {
-          leds[i].r = 100;
-          leds[i].g = 100;
-          leds[i].b = 100;
-        }
-    }
-
-  if (alarmSet == 0)
-    {
-      for (int i = 0; i < NUM_LEDS; i++) // Sets background to red, to state that alarm IS NOT set
-        {
-          fiveMins = i%5;
-          if (fiveMins == 0)
-            {
-              leds[i].r = 20;
-              leds[i].g = 0;
-              leds[i].b = 0;
-            }  
-        }     
-    }
-  else
-    {
-      for (int i = 0; i < NUM_LEDS; i++) // Sets background to green, to state that alarm IS set
-        {
-          fiveMins = i%5;
-          if (fiveMins == 0)
-            {
-              leds[i].r = 0;
-              leds[i].g = 20;
-              leds[i].b = 0;
-            }  
-        }     
-    }
-  if (alarmHour <= 11)
-    {
-      leds[(alarmHour*5+LED_OFFSET)%60].r = 255;
-    }
-  else
-    {
-      leds[((alarmHour - 12)*5+LED_OFFSET+59)%60].r = 25;    
-      leds[((alarmHour - 12)*5+LED_OFFSET)%60].r = 255;
-      leds[((alarmHour - 12)*5+LED_OFFSET+1)%60].r = 25;
-    }
+  if (alarmSet == 0) {
+    for (int i = 0; i < NUM_LEDS; i++) { // Sets background to red, to state that alarm IS NOT set
+      isFiveMins = i%5;
+      if (isFiveMins == 0) {
+        leds[i].r = 20;
+        leds[i].g = 0;
+        leds[i].b = 0;
+      }  
+    }     
+  } else {
+    for (int i = 0; i < NUM_LEDS; i++) { // Sets background to green, to state that alarm IS set
+      isFiveMins = i%5;
+      if (isFiveMins == 0) {
+        leds[i].r = 0;
+        leds[i].g = 20;
+        leds[i].b = 0;
+      }  
+    }     
+  }
+  if (alarmHour <= 11) {
+    leds[(alarmHour*5+LED_OFFSET)%60].r = 255;
+  } else {
+    leds[((alarmHour - 12)*5+LED_OFFSET+59)%60].r = 25;    
+    leds[((alarmHour - 12)*5+LED_OFFSET)%60].r = 255;
+    leds[((alarmHour - 12)*5+LED_OFFSET+1)%60].r = 25;
+  }
   leds[(alarmMin+LED_OFFSET)%60].g = 100;
   flashTime = millis();
-  if (state == STATE_SET_ALARM_HR && flashTime%300 >= 150)
-    {
-      leds[(((alarmHour%12)*5)+LED_OFFSET+59)%60].r = 0;   
-      leds[(((alarmHour%12)*5)+LED_OFFSET)%60].r = 0;
-      leds[(((alarmHour%12)*5)+LED_OFFSET+1)%60].r = 0; 
-    }
-  if (state == STATE_SET_ALARM_MIN && flashTime%300 >= 150)
-    {
-      leds[(alarmMin+LED_OFFSET)%60].g = 0;
-    }
+  if (state == STATE_SET_ALARM_HR && flashTime%300 >= 150) {
+    leds[(((alarmHour%12)*5)+LED_OFFSET+59)%60].r = 0;   
+    leds[(((alarmHour%12)*5)+LED_OFFSET)%60].r = 0;
+    leds[(((alarmHour%12)*5)+LED_OFFSET+1)%60].r = 0; 
+  }
+  if (state == STATE_SET_ALARM_MIN && flashTime%300 >= 150) {
+    leds[(alarmMin+LED_OFFSET)%60].g = 0;
+  }
   leds[(alarmMode+LED_OFFSET)%60].b = 255;
 }
 
-void setClockDisplay(DateTime now)
-{
-  for (int i = 0; i < NUM_LEDS; i++)
-    {
-      fiveMins = i%5;
-      if (fiveMins == 0)
-        {
-          leds[i].r = 10;
-          leds[i].g = 10;
-          leds[i].b = 10;
-        }
-    } 
-  if (now.hour() <= 11) {leds[(now.hour()*5+LED_OFFSET)%60].r = 255;}
-  else
-    {
-      leds[((now.hour() - 12)*5+LED_OFFSET+59)%60].r = 255;
-      leds[((now.hour() - 12)*5+LED_OFFSET)%60].r = 255;   
-      leds[((now.hour() - 12)*5+LED_OFFSET+1)%60].r = 255;
+void setClockDisplay(DateTime now) {
+  for (int i = 0; i < NUM_LEDS; i++) {
+    isFiveMins = i%5;
+    if (isFiveMins == 0) {
+      leds[i].r = 10;
+      leds[i].g = 10;
+      leds[i].b = 10;
     }
+  } 
+  if (now.hour() <= 11) {
+    leds[(now.hour()*5+LED_OFFSET)%60].r = 255;
+  } else {
+    leds[((now.hour() - 12)*5+LED_OFFSET+59)%60].r = 255;
+    leds[((now.hour() - 12)*5+LED_OFFSET)%60].r = 255;   
+    leds[((now.hour() - 12)*5+LED_OFFSET+1)%60].r = 255;
+  }
   flashTime = millis();
-  if (state == STATE_SET_CLOCK_HR && flashTime%300 >= 150)
-    {
-      leds[(((now.hour()%12)*5)+LED_OFFSET+59)%60].r = 0;   
-      leds[((now.hour()%12)*5+LED_OFFSET)%60].r = 0;
-      leds[(((now.hour()%12)*5)+LED_OFFSET+1)%60].r = 0; 
-    }
-  if (state == STATE_SET_CLOCK_MIN && flashTime%300 >= 150) {leds[(now.minute()+LED_OFFSET)%60].g = 0;}
-  else {leds[(now.minute()+LED_OFFSET)%60].g = 255;}
-  if (state == STATE_SET_CLOCK_SEC && flashTime%300 >= 150) {leds[(now.second()+LED_OFFSET)%60].b = 0;}
-  else {leds[(now.second()+LED_OFFSET)%60].b = 255;}
+  if (state == STATE_SET_CLOCK_HR && flashTime%300 >= 150) {
+    leds[(((now.hour()%12)*5)+LED_OFFSET+59)%60].r = 0;   
+    leds[((now.hour()%12)*5+LED_OFFSET)%60].r = 0;
+    leds[(((now.hour()%12)*5)+LED_OFFSET+1)%60].r = 0; 
+  }
+  if (state == STATE_SET_CLOCK_MIN && flashTime%300 >= 150) {
+    leds[(now.minute()+LED_OFFSET)%60].g = 0;
+  } else {leds[(now.minute()+LED_OFFSET)%60].g = 255;}
+  if (state == STATE_SET_CLOCK_SEC && flashTime%300 >= 150) {
+    leds[(now.second()+LED_OFFSET)%60].b = 0;
+  } else {leds[(now.second()+LED_OFFSET)%60].b = 255;}
 }
 
 // Check if alarm is active and if is it time for the alarm to trigger
-void alarm(DateTime now)
-{
-  if ((alarmMin == now.minute()%60) && (alarmHour == now.hour()%24)) //check if the time is the same to trigger alarm
-    {
-      alarmTrig = true;
-      alarmTrigTime = millis();
-    }
+void alarm(DateTime now) {
+  if ((alarmMin == now.minute()%60) && (alarmHour == now.hour()%24)) { //check if the time is the same to trigger alarm
+    alarmTrig = true;
+    alarmTrigTime = millis();
+  }
 }
 
-void alarmDisplay() // Displays the alarm
-{
-  switch (alarmMode)
-    {
-      case 1:
-        // set all LEDs to a dim white
-        for (int i = 0; i < NUM_LEDS; i++)
-          {
-            leds[i].r = 100;
-            leds[i].g = 100;
-            leds[i].b = 100;
-          }
-        break;
-      case 2:
-        LEDPosition = ((millis() - alarmTrigTime)/300);
-        reverseLEDPosition = 60 - LEDPosition;
-        if (LEDPosition >= 0 && LEDPosition <= 29)
-          {
-            for (int i = 0; i < LEDPosition; i++)
-              {
-                leds[(i+LED_OFFSET)%60].r = 5;
-                leds[(i+LED_OFFSET)%60].g = 5;
-                leds[(i+LED_OFFSET)%60].b = 5;
-              }
-          }
-        if (reverseLEDPosition <= 59 && reverseLEDPosition >= 31)
-          {
-            for (int i = 59; i > reverseLEDPosition; i--)
-              {
-                leds[(i+LED_OFFSET)%60].r = 5;
-                leds[(i+LED_OFFSET)%60].g = 5;
-                leds[(i+LED_OFFSET)%60].b = 5;
-              }              
-          }
-        if (LEDPosition >= 30)
-          {
-            for (int i = 0; i < NUM_LEDS; i++)
-              {
-                leds[(i+LED_OFFSET)%60].r = 5;
-                leds[(i+LED_OFFSET)%60].g = 5;
-                leds[(i+LED_OFFSET)%60].b = 5;
-              }           
-          }            
-        break;
-      case 3:
-        fadeTime = 60000;
-        brightFadeRad = (millis() - alarmTrigTime)/fadeTime; // Divided by the time period of the fade up.
-        if (millis() > alarmTrigTime + fadeTime) LEDBrightness = 255;
-        else LEDBrightness = 255.0*(1.0+sin((1.57*brightFadeRad)-1.57));
-        for (int i = 0; i < NUM_LEDS; i++)
-          {
-            leds[i].r = LEDBrightness;
-            leds[i].g = LEDBrightness;
-            leds[i].b = LEDBrightness;
-          }
-        break;
-
-// Currently not working        
-//      case 4:
-//        fadeTime = 60000;
-//        brightFadeRad = (millis() - alarmTrigTime)/fadeTime; // Divided by the time period of the fade up.
-//        LEDPosition = ((millis() - alarmTrigTime)/(fadeTime/30));
-////        if (millis() > alarmTrigTime + fadeTime) LEDBrightness = 255; // If the fade time is complete, then the LED brightness will be set to full.
-//        if (brightFadeRad <= 0) LEDBrightness = 0;
-//        else if (brightFadeRad >= 0) LEDBrightness = 1;
-//        else LEDBrightness = 255.0*(1.0+sin((1.57*brightFadeRad)-1.57));
-//        
-////        Serial.println(brightFadeRad);
-////        Serial.println(LEDBrightness);
-//        reverseLEDPosition = 60 - LEDPosition;
-//        if (LEDPosition >= 0 && LEDPosition <= 29)
-//          {
-//            for (int i = 0; i < LEDPosition; i++)
-//              {
-//                leds[i].r = LEDBrightness;
-//                leds[i].g = LEDBrightness;
-//                leds[i].b = LEDBrightness;
-//              }
-//          }
-//        if (reverseLEDPosition <= 59 && reverseLEDPosition >= 31)
-//          {
-//            for (int i = 59; i > reverseLEDPosition; i--)
-//              {
-//                leds[i].r = LEDBrightness;
-//                leds[i].g = LEDBrightness;
-//                leds[i].b = LEDBrightness;
-//              }              
-//          }
-//        if (LEDPosition >= 30)
-//          {
-//            for (int i = 0; i < NUM_LEDS; i++)
-//              {
-//                leds[i].r = LEDBrightness;
-//                leds[i].g = LEDBrightness;
-//                leds[i].b = LEDBrightness;
-//              }           
-//          }  
-//        break;
-    }
+void alarmDisplay() {
+  switch (alarmMode) {
+    case 1:
+      // set all LEDs to a dim white
+      for (int i = 0; i < NUM_LEDS; i++) {
+        leds[i].r = 100;
+        leds[i].g = 100;
+        leds[i].b = 100;
+      }
+      break;
+    case 2:
+      LEDPosition = ((millis() - alarmTrigTime)/300);
+      reverseLEDPosition = 60 - LEDPosition;
+      if (LEDPosition >= 0 && LEDPosition <= 29) {
+        for (int i = 0; i < LEDPosition; i++) {
+          leds[(i+LED_OFFSET)%60].r = 5;
+          leds[(i+LED_OFFSET)%60].g = 5;
+          leds[(i+LED_OFFSET)%60].b = 5;
+        }
+      }
+      if (reverseLEDPosition <= 59 && reverseLEDPosition >= 31) {
+        for (int i = 59; i > reverseLEDPosition; i--) {
+          leds[(i+LED_OFFSET)%60].r = 5;
+          leds[(i+LED_OFFSET)%60].g = 5;
+          leds[(i+LED_OFFSET)%60].b = 5;
+        }              
+      }
+      if (LEDPosition >= 30) {
+        for (int i = 0; i < NUM_LEDS; i++) {
+          leds[(i+LED_OFFSET)%60].r = 5;
+          leds[(i+LED_OFFSET)%60].g = 5;
+          leds[(i+LED_OFFSET)%60].b = 5;
+        }           
+      }            
+      break;
+    case 3:
+      fadeTime = 60000;
+      brightFadeRad = (millis() - alarmTrigTime)/fadeTime; // Divided by the time period of the fade up.
+      if (millis() > alarmTrigTime + fadeTime) LEDBrightness = 255;
+      else LEDBrightness = 255.0*(1.0+sin((1.57*brightFadeRad)-1.57));
+      for (int i = 0; i < NUM_LEDS; i++) {
+        leds[i].r = LEDBrightness;
+        leds[i].g = LEDBrightness;
+        leds[i].b = LEDBrightness;
+      }
+      break;
+  }
 }
 
-//  
-void countDownDisplay(DateTime now)
-{
+void countDownDisplay(DateTime now) {
   flashTime = millis();
-  if (countDown == true)
-    {
-      currentCountDown = countDownTime + startCountDown - now.unixtime();
-      if (currentCountDown > 0)
-        {
-          countDownMin = currentCountDown / 60;
-          countDownSec = currentCountDown%60 * 4; // have multiplied by 4 to create brightness
-          for (int i = 0; i < countDownMin; i++) {leds[(i+LED_OFFSET+1)%60].b = 240;} // Set a blue LED for each complete minute that is remaining 
-          leds[(countDownMin+LED_OFFSET+1)%60].b = countDownSec; // Display the remaining secconds of the current minute as its brightness      
+  if (countDown == true) {
+    currentCountDown = countDownTime + startCountDown - now.unixtime();
+    if (currentCountDown > 0) {
+        countDownMin = currentCountDown / 60;
+        countDownSec = currentCountDown%60 * 4; // have multiplied by 4 to create brightness
+        for (int i = 0; i < countDownMin; i++) {leds[(i+LED_OFFSET+1)%60].b = 240;} // Set a blue LED for each complete minute that is remaining 
+        leds[(countDownMin+LED_OFFSET+1)%60].b = countDownSec; // Display the remaining secconds of the current minute as its brightness      
+    } else {
+      countDownFlash = now.unixtime()%2;
+      if (countDownFlash == 0) {
+        for (int i = 0; i < NUM_LEDS; i++) { // Set the background as all off
+          leds[i] = CRGB::Black;
         }
-      else
-        {
-          countDownFlash = now.unixtime()%2;
-          if (countDownFlash == 0)
-            {
-              for (int i = 0; i < NUM_LEDS; i++) // Set the background as all off
-                {
-                  leds[i] = CRGB::Black;
-                }
-            }
-          else
-            {
-              for (int i = 0; i < NUM_LEDS; i++) // Set the background as all blue
-                {
-                  leds[i].r = 0;
-                  leds[i].g = 0;
-                  leds[i].b = 255;
-                }
-            }
+      } else {
+        for (int i = 0; i < NUM_LEDS; i++) { // Set the background as all blue
+          leds[i] = CRGB::Blue;
         }
+      }
     }
-  else
-    {
-      currentCountDown = countDownTime;
-      if (countDownTime == 0)
-        {
-          currentMillis = millis();
-          clearLEDs();
-          switch (demoIntro)
-            {
-              case 0:
-                for (int i = 0; i < j; i++) {leds[(i+LED_OFFSET+1)%60].b = 20;}
-                if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
-                if (j == NUM_LEDS) {demoIntro = 1;}
-                break;
-              case 1:
-                for (int i = 0; i < j; i++) {leds[(i+LED_OFFSET+1)%60].b = 20;}
-                if (currentMillis - previousMillis > timeInterval) {j--; previousMillis = currentMillis;}
-                if (j < 0) {demoIntro = 0;}
-                break;
-            }
-        }
-      else if (countDownTime > 0 && flashTime%300 >= 150)
-        {
-          countDownMin = currentCountDown / 60; //
-          for (int i = 0; i < countDownMin; i++) {leds[(i+LED_OFFSET+1)%60].b = 255;} // Set a blue LED for each complete minute that is remaining
-        }
+  } else {
+    currentCountDown = countDownTime;
+    if (countDownTime == 0) {
+      currentMillis = millis();
+      clearLEDs();
+      switch (demoIntro) {
+        case 0:
+          for (int i = 0; i < j; i++) {leds[(i+LED_OFFSET+1)%60].b = 20;}
+          if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
+          if (j == NUM_LEDS) {demoIntro = 1;}
+          break;
+        case 1:
+          for (int i = 0; i < j; i++) {leds[(i+LED_OFFSET+1)%60].b = 20;}
+          if (currentMillis - previousMillis > timeInterval) {j--; previousMillis = currentMillis;}
+          if (j < 0) {demoIntro = 0;}
+          break;
+      }
+    } else if (countDownTime > 0 && flashTime%300 >= 150) {
+      countDownMin = currentCountDown / 60;
+      for (int i = 0; i < countDownMin; i++) {leds[(i+LED_OFFSET+1)%60].b = 255;} // Set a blue LED for each complete minute that is remaining
     }
+  }
 }
 
-void runDemo(DateTime now)
-{
+void runDemo(DateTime now) {
   currentDemoTime = now.unixtime();
   currentMillis = millis();
   clearLEDs();
-  switch (demoIntro)
-    {
-      case 0:
-        timeDisplay(now);
-        if (currentDemoTime - previousDemoTime > DEMO_TIME_S) {previousDemoTime = currentDemoTime; clockMode++;}  // TODO: Remove clockMode++???
-        break;
-      case 1:
-        for (int i = 0; i < j; i++) {leds[i].r = 255;}
-        if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
-        if (j == NUM_LEDS) {j = 0; demoIntro++;}
-        break;
-      case 2:
-        for (int i = j; i < NUM_LEDS; i++) {leds[i].r = 255;}
-        if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
-        if (j == NUM_LEDS) {j = 0; demoIntro++;}
-        break;
-      case 3:
-        for (int i = 0; i < j; i++) {leds[i].g = 255;}
-        if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
-        if (j == NUM_LEDS) {j = 0; demoIntro++;}
-        break;
-      case 4:
-        for (int i = j; i < NUM_LEDS; i++) {leds[i].g = 255;}
-        if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
-        if (j == NUM_LEDS) {j = 0; demoIntro++;}
-        break;
-      case 5:
-        for (int i = 0; i < j; i++) {leds[i].b = 255;}
-        if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
-        if (j == NUM_LEDS) {j = 0; demoIntro++;}
-        break;
-      case 6:
-        for (int i = j; i < NUM_LEDS; i++) {leds[i].b = 255;}
-        if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
-        if (j == NUM_LEDS) {j = 0; demoIntro++;}
-        break;
-      case 7:
-        for (int i = 0; i < j; i++) {leds[i] = CRGB::White;}
-        if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
-        if (j == NUM_LEDS) {j = 0; demoIntro++;}
-        break;
-      case 8:
-        for (int i = j; i < NUM_LEDS; i++) {leds[i] = CRGB::White;}
-        if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
-        if (j == NUM_LEDS)
-          {
-            demoIntro = 0;
-            clockMode = 0;
-            Serial.print("Mode is "); Serial.println(clockMode);
-            Serial.print("State is "); Serial.println(state);
-          }
-        break;
-    }
+  switch (demoIntro) {
+    case 0:
+      timeDisplay(now);
+      if (currentDemoTime - previousDemoTime > DEMO_TIME_S) {previousDemoTime = currentDemoTime; clockMode++;}  // TODO: Remove clockMode++???
+      break;
+    case 1:
+      for (int i = 0; i < j; i++) {leds[i].r = 255;}
+      if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
+      if (j == NUM_LEDS) {j = 0; demoIntro++;}
+      break;
+    case 2:
+      for (int i = j; i < NUM_LEDS; i++) {leds[i].r = 255;}
+      if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
+      if (j == NUM_LEDS) {j = 0; demoIntro++;}
+      break;
+    case 3:
+      for (int i = 0; i < j; i++) {leds[i].g = 255;}
+      if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
+      if (j == NUM_LEDS) {j = 0; demoIntro++;}
+      break;
+    case 4:
+      for (int i = j; i < NUM_LEDS; i++) {leds[i].g = 255;}
+      if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
+      if (j == NUM_LEDS) {j = 0; demoIntro++;}
+      break;
+    case 5:
+      for (int i = 0; i < j; i++) {leds[i].b = 255;}
+      if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
+      if (j == NUM_LEDS) {j = 0; demoIntro++;}
+      break;
+    case 6:
+      for (int i = j; i < NUM_LEDS; i++) {leds[i].b = 255;}
+      if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
+      if (j == NUM_LEDS) {j = 0; demoIntro++;}
+      break;
+    case 7:
+      for (int i = 0; i < j; i++) {leds[i] = CRGB::White;}
+      if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
+      if (j == NUM_LEDS) {j = 0; demoIntro++;}
+      break;
+    case 8:
+      for (int i = j; i < NUM_LEDS; i++) {leds[i] = CRGB::White;}
+      if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
+      if (j == NUM_LEDS) {
+        demoIntro = 0;
+        clockMode = 0;
+        Serial.print("Mode is "); Serial.println(clockMode);
+        Serial.print("State is "); Serial.println(state);
+      }
+      break;
+  }
 }
 
-void clearLEDs()
-{    
+void clearLEDs() {    
   FastLED.clear();  
-  for (int i = 0; i < NUM_LEDS; i++) // Set all the LEDs to off
-    {
-      leds[i] = CRGB::Black;
-    }
+  for (int i = 0; i < NUM_LEDS; i++) { // Set all the LEDs to off
+    leds[i] = CRGB::Black;
+  }
 }
 
-void timeDisplay(DateTime now)
-{ 
-  switch (clockMode)
-    {
-      case 0:
-        minimalClock(now);
-        break;
-      case 1:
-        basicClock(now);
-        break;
-      case 2:
-        smoothSecond(now);
-        break;
-      case 3:
-        outlineClock(now);
-        break;
-      case 4:
-        minimalMilliSec(now);
-        break;
-      case 5:
-        simplePendulum(now);
-        break;
-      case 6:
-        breathingClock(now);
-        break;
-      default: // Keep this here and add more timeDisplay modes as defined cases.
-        {
-          clockMode = 0;
-        }
-    }
+void timeDisplay(DateTime now) { 
+  switch (clockMode) {
+    case 0:
+      minimalClock(now);
+      break;
+    case 1:
+      basicClock(now);
+      break;
+    case 2:
+      smoothSecond(now);
+      break;
+    case 3:
+      outlineClock(now);
+      break;
+    case 4:
+      minimalMilliSec(now);
+      break;
+    case 5:
+      simplePendulum(now);
+      break;
+    case 6:
+      breathingClock(now);
+      break;
+    default: // Keep this here and add more timeDisplay modes as defined cases.
+      clockMode = 0;
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -784,18 +621,14 @@ void timeDisplay(DateTime now)
 // Add each of the new display mode functions as a new "case", leaving default last.
 ////////////////////////////////////////////////////////////////////////////////////////////
 
-//
-void minimalClock(DateTime now)
-{
+void minimalClock(DateTime now) {
   unsigned char hourPos = (now.hour()%12)*5;
   leds[(hourPos+LED_OFFSET)%60].r = 255;
   leds[(now.minute()+LED_OFFSET)%60].g = 255;
   leds[(now.second()+LED_OFFSET)%60].b = 255;
 }
 
-//
-void basicClock(DateTime now)
-{
+void basicClock(DateTime now) {
   unsigned char hourPos = ((now.hour()%12)*5 + (now.minute()+6)/12);
   leds[(hourPos+LED_OFFSET+59)%60].r = 255;
   leds[(hourPos+LED_OFFSET+59)%60].g = 0;
@@ -815,16 +648,13 @@ void basicClock(DateTime now)
   
 }
 
-// 
-void smoothSecond(DateTime now)
-{
-  if (now.second()!=old.second())
-    {
-      old = now;
-      cyclesPerSec = millis() - newSecTime;
-      cyclesPerSecFloat = (float) cyclesPerSec;
-      newSecTime = millis();      
-    } 
+void smoothSecond(DateTime now) {
+  if (now.second()!=old.second()) {
+    old = now;
+    cyclesPerSec = millis() - newSecTime;
+    cyclesPerSecFloat = (float) cyclesPerSec;
+    newSecTime = millis();      
+  } 
   // set hour, min & sec LEDs
   fracOfSec = (millis() - newSecTime)/cyclesPerSecFloat;  // This divides by 733, but should be 1000 and not sure why???
   if (subSeconds < cyclesPerSec) {secondBrightness = 50.0*(1.0+sin((3.14*fracOfSec)-1.57));}
@@ -839,19 +669,15 @@ void smoothSecond(DateTime now)
   leds[(now.second()+LED_OFFSET+59)%60].b = secondBrightness2;
 }
 
-//
-void outlineClock(DateTime now)
-{
-  for (int i = 0; i < NUM_LEDS; i++)
-    {
-      fiveMins = i%5;
-      if (fiveMins == 0)
-        {
-          leds[i].r = 100;
-          leds[i].g = 100;
-          leds[i].b = 100;
-        }
+void outlineClock(DateTime now) {
+  for (int i = 0; i < NUM_LEDS; i++) {
+    isFiveMins = i%5;
+    if (isFiveMins == 0) {
+      leds[i].r = 100;
+      leds[i].g = 100;
+      leds[i].b = 100;
     }
+  }
   unsigned char hourPos = ((now.hour()%12)*5 + (now.minute()+6)/12);
   leds[(hourPos+LED_OFFSET+59)%60].r = 255;   
   leds[(hourPos+LED_OFFSET)%60].r = 255;
@@ -859,15 +685,13 @@ void outlineClock(DateTime now)
   leds[(now.minute()+LED_OFFSET)%60].g = 255;
   leds[(now.second()+LED_OFFSET)%60].b = 255;
 }
-//
-void minimalMilliSec(DateTime now)
-{
-  if (now.second()!=old.second())
-    {
-      old = now;
-      cyclesPerSec = (millis() - newSecTime);
-      newSecTime = millis();
-    } 
+
+void minimalMilliSec(DateTime now) {
+  if (now.second()!=old.second()) {
+    old = now;
+    cyclesPerSec = (millis() - newSecTime);
+    newSecTime = millis();
+  } 
   // set hour, min & sec LEDs
   unsigned char hourPos = ((now.hour()%12)*5 + (now.minute()+6)/12);
   subSeconds = (((millis() - newSecTime)*60)/cyclesPerSec)%60;  // This divides by 733, but should be 1000 and not sure why???
@@ -884,17 +708,15 @@ void minimalMilliSec(DateTime now)
 }
 
 // Pendulum will be at the bottom and left for one second and right for one second
-void simplePendulum(DateTime now)
-{
-  if (now.second()!=old.second())
-    {
-      old = now;
-      cyclesPerSec = millis() - newSecTime;
-      cyclesPerSecFloat = (float) cyclesPerSec;
-      newSecTime = millis();
-      if (swingBack == true) {swingBack = false;}
-      else {swingBack = true;}
-    } 
+void simplePendulum(DateTime now) {
+  if (now.second()!=old.second()) {
+    old = now;
+    cyclesPerSec = millis() - newSecTime;
+    cyclesPerSecFloat = (float) cyclesPerSec;
+    newSecTime = millis();
+    if (swingBack == true) {swingBack = false;}
+    else {swingBack = true;}
+  } 
   // set hour, min & sec LEDs
   fracOfSec = (millis() - newSecTime)/cyclesPerSecFloat;  // This divides by 733, but should be 1000 and not sure why???
   if (subSeconds < cyclesPerSec && swingBack == true) {pendulumPos = 27.0 + 3.4*(1.0+sin((3.14*fracOfSec)-1.57));}
@@ -912,28 +734,22 @@ void simplePendulum(DateTime now)
   leds[(now.second()+LED_OFFSET)%60].b = 255;
 }
 
-void breathingClock(DateTime now)
-{
-  if (alarmTrig == false)
-    {
-      breathBrightness = 15.0*(1.0+sin((3.14*millis()/2000.0)-1.57));
-      for (int i = 0; i < NUM_LEDS; i++)
-        {
-          fiveMins = i%5;
-          if (fiveMins == 0)
-            {
-              leds[i].r = breathBrightness + 5;
-              leds[i].g = breathBrightness + 5;
-              leds[i].b = breathBrightness + 5;
-            }
-          else
-            {
-              leds[i].r = 0;
-              leds[i].g = 0;
-              leds[i].b = 0;
-            }
-        }
+void breathingClock(DateTime now) {
+  if (alarmTrig == false) {
+    breathBrightness = 15.0*(1.0+sin((3.14*millis()/2000.0)-1.57));
+    for (int i = 0; i < NUM_LEDS; i++) {
+      isFiveMins = i%5;
+      if (isFiveMins == 0) {
+        leds[i].r = breathBrightness + 5;
+        leds[i].g = breathBrightness + 5;
+        leds[i].b = breathBrightness + 5;
+      } else {
+        leds[i].r = 0;
+        leds[i].g = 0;
+        leds[i].b = 0;
+      }
     }
+  }
   unsigned char hourPos = ((now.hour()%12)*5 + (now.minute()+6)/12);
   leds[(hourPos+LED_OFFSET+59)%60].r = 255;   
   leds[(hourPos+LED_OFFSET)%60].r = 255;
