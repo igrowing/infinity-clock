@@ -19,6 +19,7 @@ RTC_DS1307 RTC; // Establishes the chipset of the Real Time Clock
 #define LED_OFFSET  30    // Adjust by LED position/shift in the circle
 #define HOLD_TIME_MS 1500
 #define DEMO_TIME_S 12 // seconds
+#define ROTARY_SET_TIME_MS 300
 
 struct CRGB leds[NUM_LEDS];  // Setting up the LED strip
 Encoder rotary1(PIN2, PIN3); // Setting up the Rotary Encoder
@@ -94,8 +95,7 @@ boolean menuReleased = false;
 int rotaryMove = 0;
 boolean countTime = false;
 long menuTimePressed;
-long lastRotary;
-int rotaryTime = 1000;
+volatile long lastRotary;
 
 int LEDPosition;
 int reverseLEDPosition;
@@ -146,16 +146,22 @@ void loop() {
   // Check for any button presses and action accordingley
   menuButton = menuBouncer.update();  // Update the debouncer for the menu button and saves state to menuButton
   rotary1Pos = rotary1.read(); // Checks the rotary position
-  if (rotary1Pos <= -2 && lastRotary - millis() >= rotaryTime) {
-    rotaryMove = -1;
-    rotary1.write(0);
-    lastRotary = millis();
-  } 
-  if (rotary1Pos >= 2 && lastRotary - millis() >= rotaryTime) {
-    rotaryMove = 1;
-    rotary1.write(0);
-    lastRotary = millis();
+  // if (rotary1Pos <= -2 && lastRotary - millis() >= ROTARY_SET_TIME_MS) {
+  if (rotary1Pos != 0) {
+    if (millis() - lastRotary >= ROTARY_SET_TIME_MS) {
+      rotaryMove = (rotary1Pos < 0)?-1:1;
+      rotary1.write(0);
+      lastRotary = millis();
+    } else {  // Reset position if no valid move detected.
+      rotary1Pos = 0;
+      rotary1.write(0);
+    }  
   }
+  // if (rotary1Pos >= 2 && lastRotary - millis() >= ROTARY_SET_TIME_MS) {
+  //   rotaryMove = 1;
+  //   rotary1.write(0);
+  //   lastRotary = millis();
+  // }
   if (menuButton == true || rotaryMove != 0 || countTime == true) {buttonCheck(menuBouncer,now);}
   
   // clear LED array
