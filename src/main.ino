@@ -320,29 +320,26 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
 }
 
 void setAlarmDisplay() {
-  for (int i = 0; i < NUM_LEDS; i++) {
-    if (i%5 == 0) {  // Apply to every 5th LED (5-minute ticks)
-        leds[i].r = 100;
-        leds[i].g = 100;
-        leds[i].b = 100;
-      }
+  for (int i = 0; i < NUM_LEDS; i += 5) {
+    // Apply to every 5th LED (5-minute ticks)
+    leds[i].r = 100;
+    leds[i].g = 100;
+    leds[i].b = 100;
   }
 
   if (alarmSet == 0) {
-    for (int i = 0; i < NUM_LEDS; i++) { // Sets background to red, to state that alarm IS NOT set
-      if (i%5 == 0) {  // Apply to every 5th LED (5-minute ticks)
-        leds[i].r = 20;
-        leds[i].g = 0;
-        leds[i].b = 0;
-      }  
+    for (int i = 0; i < NUM_LEDS; i += 5) { // Sets background to red, to state that alarm IS NOT set
+      // Apply to every 5th LED (5-minute ticks)
+      leds[i].r = 20;
+      leds[i].g = 0;
+      leds[i].b = 0;
     }     
   } else {
-    for (int i = 0; i < NUM_LEDS; i++) { // Sets background to green, to state that alarm IS set
-      if (i%5 == 0) {  // Apply to every 5th LED (5-minute ticks)
-        leds[i].r = 0;
-        leds[i].g = 20;
-        leds[i].b = 0;
-      }  
+    for (int i = 0; i < NUM_LEDS; i += 5) { // Sets background to green, to state that alarm IS set
+      // Apply to every 5th LED (5-minute ticks)
+      leds[i].r = 0;
+      leds[i].g = 20;
+      leds[i].b = 0;
     }     
   }
   if (alarmHour <= 11) {
@@ -366,12 +363,11 @@ void setAlarmDisplay() {
 }
 
 void setClockDisplay(DateTime now) {
-  for (int i = 0; i < NUM_LEDS; i++) {
-    if (i%5 == 0) {  // Apply to every 5th LED (5-minute ticks)
-      leds[i].r = 10;
-      leds[i].g = 10;
-      leds[i].b = 10;
-    }
+  for (int i = 0; i < NUM_LEDS; i += 5) {
+    // Apply to every 5th LED (5-minute ticks)
+    leds[i].r = 10;
+    leds[i].g = 10;
+    leds[i].b = 10;
   } 
   if (now.hour() <= 11) {
     leds[(now.hour()*5+LED_OFFSET)%60].r = 255;
@@ -602,7 +598,7 @@ void minimalClock(DateTime now) {
 }
 
 void basicClock(DateTime now) {
-  unsigned char hourPos = ((now.hour()%12)*5 + (now.minute()+6)/12);
+  unsigned char hourPos = (now.hour()%12)*5 + (now.minute()+6)/12;
   leds[(hourPos+LED_OFFSET+59)%60].r = 255;
   leds[(hourPos+LED_OFFSET+59)%60].g = 0;
   leds[(hourPos+LED_OFFSET+59)%60].b = 0;  
@@ -643,12 +639,11 @@ void smoothSecond(DateTime now) {
 }
 
 void outlineClock(DateTime now) {
-  for (int i = 0; i < NUM_LEDS; i++) {
-    if (i%5 == 0) {  // Apply to every 5th LED (5-minute ticks)
-      leds[i].r = 100;
-      leds[i].g = 100;
-      leds[i].b = 100;
-    }
+  for (int i = 0; i < NUM_LEDS; i += 5) {
+    // Apply to every 5th LED (5-minute ticks)
+    leds[i].r = 100;
+    leds[i].g = 100;
+    leds[i].b = 100;
   }
   unsigned char hourPos = ((now.hour()%12)*5 + (now.minute()+6)/12);
   leds[(hourPos+LED_OFFSET+59)%60].r = 255;   
@@ -709,14 +704,11 @@ void simplePendulum(DateTime now) {
 void breathingClock(DateTime now) {
   if (alarmTrig == false) {
     breathBrightness = 30.0*(1.0+sin((3.14*millis()/2000.0)-1.57)) + 2;
-    for (int i = 0; i < NUM_LEDS; i++) {
-      if (i%5 == 0) {  // Apply to every 5th LED (5-minute ticks)
-        leds[i].r = breathBrightness;
-        leds[i].g = breathBrightness;
-        leds[i].b = breathBrightness;
-      } else {
-        leds[i] = CRGB::Black;
-      }
+    for (int i = 0; i < NUM_LEDS; i += 5) {
+      // Apply to every 5th LED (5-minute ticks)
+      leds[i].r = breathBrightness;
+      leds[i].g = breathBrightness;
+      leds[i].b = breathBrightness;
     }
   }
   unsigned char hourPos = (now.hour()%12)*5 + (now.minute()+6)/12;
