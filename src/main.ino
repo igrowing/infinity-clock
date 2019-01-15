@@ -74,6 +74,8 @@ long previousMillis = 0;
 float LEDBrightness = 0;
 float fadeTime;
 float brightFadeRad;
+volatile uint8_t star;
+volatile float starBlinks;
 
 volatile int state = 0; // Variable of the state of the clock, with the following defined states 
 #define STATE_CLOCK 0
@@ -86,7 +88,7 @@ volatile int state = 0; // Variable of the state of the clock, with the followin
 #define STATE_COUNTDOWN 7
 #define STATE_DEMO 8
 volatile uint8_t clockMode; // Variable of the display mode of the clock
-#define CLOCK_MODE_MAX 7 // Change this when new modes are added. This is so selecting modes can go back beyond.
+#define CLOCK_MODE_MAX 8 // Change this when new modes are added. This is so selecting modes can go back beyond.
 volatile uint8_t alarmMode; // Variable of the alarm display mode
 #define ALARM_MODE_MAX 3
 
@@ -148,7 +150,7 @@ void setup() {
   Serial.print("Alarm Min is "); Serial.println(alarmMin);
   Serial.print("Alarm is set "); Serial.println(alarmSet);
   Serial.print("Alarm Mode is "); Serial.println(alarmMode);
-
+  state = STATE_CLOCK;
   printDateTime();
 }
 
@@ -554,7 +556,6 @@ void runDemo(DateTime now) {
 }
 
 void clearLEDs() {    
-  // FastLED.clear();  
   for (int i = 0; i < NUM_LEDS; i++) { // Set all the LEDs to off
     leds[i] = CRGB::Black;
   }
@@ -582,6 +583,9 @@ void timeDisplay(DateTime now) {
       break;
     case 6:
       breathingClock(now);
+      break;
+    case 7:
+      starryNightClock(now);
       break;
     default: // Keep this here and add more timeDisplay modes as defined cases.
       clockMode = RTC.readnvram(CLOCK_MODE_ADDR);
@@ -641,30 +645,22 @@ void outlineClock(DateTime now) {
     leds[i].b = 100;
   }
   basicClock(now);
-  // leds[(now.second()+LED_OFFSET)%60].b = 255;
 }
-
 
 void starryNightClock(DateTime now) {
   basicClock(now);
   if (now.second()!=old.second()) {
+    star = random8(60);           // Choose star
+    starBlinks = (float)(random8(1, 4) * 8);   // Choose times of sparkles
     old = now;
-    cyclesPerSec = millis() - newSecTime;
-    cyclesPerSecFloat = (float) cyclesPerSec;
-    newSecTime = millis();      
   } 
-  for (int i = 0; i < NUM_LEDS; i += 5) {
-    // Apply to every 5th LED (5-minute ticks)
-    leds[i].r = 100;
-    leds[i].g = 100;
-    leds[i].b = 100;
-  }
-  // unsigned char hourPos = ((now.hour()%12)*5 + (now.minute()+6)/12);
-  // leds[(hourPos+LED_OFFSET+59)%60].r = 255;   
-  // leds[(hourPos+LED_OFFSET)%60].r = 255;
-  // leds[(hourPos+LED_OFFSET+1)%60].r = 255;
-  // leds[(now.minute()+LED_OFFSET)%60].g = 255;
-  // leds[(now.second()+LED_OFFSET)%60].b = 255;
+  float m = (float) (millis() % 2000) / 3000.0;
+  breathBrightness = (2.0-m)*15.0*(1.0+sin(m*starBlinks-0.7));
+  breathBrightness = min(breathBrightness, 100);  // cut numbers > 100
+  breathBrightness = (breathBrightness < 15)?0:breathBrightness;  // cut numbers < 30
+  leds[star].r = breathBrightness;
+  leds[star].g = breathBrightness;
+  leds[star].b = breathBrightness;
 }
 
 // Running white light over clock round. Full round in 1 second.
