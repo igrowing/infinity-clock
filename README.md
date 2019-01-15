@@ -12,7 +12,7 @@ This project fixes few issues in original clock and improves usability, user exp
 # Usage
 See the PDF chart.
 
-The clock consumes about 600mA @ 5V in worst case (white demo). Therefore, usual 1A USB charger is enough to power it up.
+The clock consumes about 1.5A @ 5V in worst case (white demo). Therefore, usual 2A USB charger is enough to power it up.
 
 # Changes vs. original clock
 - Use RTC NVRAM instead of EEPROM: this saves EEPROM wear out.
@@ -22,6 +22,8 @@ The clock consumes about 600mA @ 5V in worst case (white demo). Therefore, usual
 - Refactor and make stable the rotary encoder.
 - Keep clock mode and restore it after power failure.
 - Breathing clock is more distinctive.
+- New Starry night clock mode.
+- About 25% less code lines.
 - Numerous bugs fixed.
 
 # Build/compile
