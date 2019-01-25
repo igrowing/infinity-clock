@@ -396,18 +396,15 @@ void setAlarmDisplay() {
   if (alarmHour <= 11) {
     leds[(alarmHour*5+led_offset)%NUM_LEDS].r = 255;
   } else {
-    // TODO: Bug here?                  VVVVVVVVVVV
-    leds[((alarmHour - 12)*5+led_offset+(NUM_LEDS-1))%NUM_LEDS].r = 25;    
+    leds[((alarmHour - 12)*5+led_offset-1)%NUM_LEDS].r = 25;    
     leds[((alarmHour - 12)*5+led_offset)%NUM_LEDS].r = 255;
     leds[((alarmHour - 12)*5+led_offset+1)%NUM_LEDS].r = 25;
   }
   leds[(alarmMin+led_offset)%NUM_LEDS].g = 100;
   flashTime = millis();
   // Turn off hourly ticks periodically to show flashing.
-  // TODO: Mode this up to red led assignment under if-else.
   if (state == STATE_SET_ALARM_HR && flashTime%300 >= 150) {
-    // TODO: Bug here?                  VVVVVVVVVVV
-    leds[(((alarmHour%12)*5)+led_offset+(NUM_LEDS-1))%NUM_LEDS].r = 0;   
+    leds[(((alarmHour%12)*5)+led_offset-1)%NUM_LEDS].r = 0;   
     leds[(((alarmHour%12)*5)+led_offset)%NUM_LEDS].r = 0;
     leds[(((alarmHour%12)*5)+led_offset+1)%NUM_LEDS].r = 0; 
   }
@@ -427,16 +424,13 @@ void setClockDisplay(DateTime now) {
   if (now.hour() <= 11) {
     leds[(now.hour()*5+led_offset)%NUM_LEDS].r = 255;
   } else {
-    // TODO: Bug here?                  VVVVVVVVVVV
-    leds[((now.hour() - 12)*5+led_offset+(NUM_LEDS-1))%NUM_LEDS].r = 255;
+    leds[((now.hour() - 12)*5+led_offset-1)%NUM_LEDS].r = 255;
     leds[((now.hour() - 12)*5+led_offset)%NUM_LEDS].r = 255;   
     leds[((now.hour() - 12)*5+led_offset+1)%NUM_LEDS].r = 255;
   }
   flashTime = millis();
-  // TODO: Mode this up to red led assignment under if-else.
   if (state == STATE_SET_CLOCK_HR && flashTime%300 >= 150) {
-    // TODO: Bug here?                  VVVVVVVVVVV
-    leds[((now.hour()%12)*5+led_offset+(NUM_LEDS-1))%NUM_LEDS].r = 0;   
+    leds[((now.hour()%12)*5+led_offset-1)%NUM_LEDS].r = 0;   
     leds[((now.hour()%12)*5+led_offset)%NUM_LEDS].r = 0;
     leds[((now.hour()%12)*5+led_offset+1)%NUM_LEDS].r = 0; 
   }
@@ -751,7 +745,7 @@ void minimalMilliSec(DateTime now) {
   leds[(subSeconds+led_offset)%NUM_LEDS].g = 50;
   leds[(subSeconds+led_offset)%NUM_LEDS].b = 50;
   // The colours are set last, so if on same LED mixed colours are created
-  leds[(hourPos+led_offset+(NUM_LEDS-1))%NUM_LEDS].r = 255;   
+  leds[(hourPos+led_offset-1)%NUM_LEDS].r = 255;   
   leds[(hourPos+led_offset)%NUM_LEDS].r = 255;
   leds[(hourPos+led_offset+1)%NUM_LEDS].r = 255;
   leds[(now.minute()+led_offset)%NUM_LEDS].g = 255;
