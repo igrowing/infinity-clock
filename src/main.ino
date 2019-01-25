@@ -28,22 +28,23 @@ RTC_DS1307 RTC;     // Establishes the chipset of the Real Time Clock
 #define HOLD_TIME_MS 1500
 #define DEMO_TIME_S 12 // seconds
 #define ROTARY_SET_TIME_MS 300
+#define TIME_INTERVAL 5
+#define FADE_TIME_MS 60000
 
 struct CRGB leds[NUM_LEDS];  // Setting up the LED strip
 Encoder rotary1(PIN2, PIN3); // Setting up the Rotary Encoder
 
 DateTime old; // Variable to compare new and old time, to see if it has moved on.
-int rotary1Pos  = 0;
+int rotary1Pos = 0;
 int subSeconds; // 60th's of a second
 int secondBrightness;
 int secondBrightness2;
-int breathBrightness;
+int brightness = 0;
 long newSecTime; // Variable to record when a new second starts, allowing to create milli seconds
-long oldSecTime;
-long flashTime; //
+long flashTime;
 long breathCycleTime;
 int cyclesPerSec;
-float cyclesPerSecFloat; // So can be used as a float in calcs
+float cyclesPerSecFloat;
 float fracOfSec;
 float breathFracOfSec;
 boolean demo;
@@ -51,9 +52,6 @@ long previousDemoTime;
 long currentDemoTime;
 float swingBack = 1.57;
 
-volatile int timeHour;
-volatile int timeMin;
-volatile int timeSec;
 volatile uint8_t alarmMin; // The minute of the alarm  
 volatile uint8_t alarmHour; // The hour of the alarm 0-23
 volatile uint8_t alarmDay = 0; // The day of the alarm
@@ -74,16 +72,13 @@ int countDownMin;
 int countDownSec;
 int countDownFlash;
 int demoIntro = 0;
-volatile int j = 0;
-long timeInterval = 5;
+volatile int j = 0;  // LED position in fast transition effects
 long currentMillis;
 long previousMillis = 0;
-float LEDBrightness = 0;
-float fadeTime;
 float brightFadeRad;
 volatile uint8_t star;
 volatile float starBlinks;
-volatile bool isBuzzerActive;
+volatile bool isBuzzerActive;  // Flag to avoid repetitive buzzer calls
 volatile int8_t led_offset;  // Allows rotate clock by 90 segrees left/right 
 
 volatile int state = 0; // Variable of the state of the clock, with the following defined states 
@@ -110,11 +105,7 @@ volatile int16_t rotaryMove = 0;
 volatile boolean countTime = false;
 long menuTimePressed;
 volatile long lastRotary;
-
-int LEDPosition;
-int reverseLEDPosition;
 int pendulumPos;
-int odd;
 
 void setup() {
   // Set up all pins
@@ -156,15 +147,15 @@ void setup() {
   RTC.writenvram(ALARM_MODE_ADDR, alarmMode);
   RTC.writenvram(LED_OFFSET_ADDR, led_offset);
   rotary1.write(0);  // Set non-interrupt mode to rotary
+  state = STATE_CLOCK;
 
-  // Prints all the saved NVRAM data to Serial
+  // Print all the saved NVRAM data to Serial
   Serial.print("Mode is "); Serial.println(clockMode);
   Serial.print("Alarm Hour is "); Serial.println(alarmHour);
   Serial.print("Alarm Min is "); Serial.println(alarmMin);
   Serial.print("Alarm is set "); Serial.println(alarmSet);
   Serial.print("Alarm Mode is "); Serial.println(alarmMode);
   Serial.print("LED offset is "); Serial.println(led_offset);
-  state = STATE_CLOCK;
   printDateTime();
 
   EasyBuzzer.setPin(PIN_BUZZER);
@@ -176,12 +167,12 @@ void loop() {
   DateTime now = RTC.now(); // Fetches the time from RTC
   EasyBuzzer.update();
 
-  // Check for any button presses and action accordingley
+  // Check for any button presses and action accordingly
   menuButton = menuBouncer.update();  // Update the debouncer for the menu button and saves state to menuButton
   rotary1Pos = rotary1.read(); // Checks the rotary position
   if (rotary1Pos != 0) {
     if (millis() - lastRotary >= ROTARY_SET_TIME_MS) {
-      rotaryMove = (rotary1Pos < 0)?-1:1;
+      rotaryMove = (rotary1Pos < 0)?-1:1;  // Limit moves to single step.
       rotary1.write(0);
       lastRotary = millis();
     } else {  // Reset position if no valid move detected.
@@ -250,7 +241,7 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
       // Progress next mode from current mode.
       if(rotaryMove != 0) {
         clockMode = (clockMode + rotaryMove) % CLOCK_MODE_MAX; // Never exceed CLOCK_MODE_MAX
-        RTC.writenvram(CLOCK_MODE_ADDR, clockMode);  // TODO: no state written if turning rotary left. Move this to timer.
+        RTC.writenvram(CLOCK_MODE_ADDR, clockMode);
         rotaryMove = 0;
       } else if(menuReleased == true) {
         if (menuTimePressed <= HOLD_TIME_MS) {
@@ -261,7 +252,7 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
       break;
     case STATE_ALARM: // State 1
       if (rotaryMove != 0) {
-        alarmMode = (alarmMode + rotaryMove) % (ALARM_MODE_MAX + 1); // // Never exceed CLOCK_MODE_MAX but 0 is alarm off
+        alarmMode = (alarmMode + rotaryMove) % (ALARM_MODE_MAX + 1);  // Never exceed CLOCK_MODE_MAX but 0 is alarm off
         if (alarmMode == 0) {alarmSet = 0;}
         else {alarmSet = 1;}
       }          
@@ -277,10 +268,11 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
       }
       break;
     case STATE_SET_ALARM_HR: // State 2
-      if (menuReleased == true) {state = STATE_SET_ALARM_MIN;}
-      else if (rotaryMove == 1 && alarmHour >= 23) {alarmHour = 0;}
-      else if (rotaryMove == -1 && alarmHour <= 0) {alarmHour = 23;}
-      else if (rotaryMove != 0) {alarmHour = alarmHour + rotaryMove;}
+      if (menuReleased == true) {
+        state = STATE_SET_ALARM_MIN;
+      } else {
+        alarmHour = (alarmHour + rotaryMove < 0) ? 23 : (alarmHour + rotaryMove) % 24;
+      }
       RTC.writenvram(ALARM_HR_ADDR, alarmHour);
       rotaryMove = 0;
       break;
@@ -289,30 +281,33 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
         state = STATE_ALARM;
         alarmDay = 0;
         newSecTime = millis();
-      } else if (rotaryMove == 1 && alarmMin >= 59) {alarmMin = 0;}
-        else if (rotaryMove == -1 && alarmMin <= 0) {alarmMin = 59;}
-        else if (rotaryMove != 0) {alarmMin = alarmMin + rotaryMove;}
+      } else {
+        alarmMin = (alarmMin + rotaryMove < 0) ? 59 : (alarmMin + rotaryMove) % 60;
+      }
       RTC.writenvram(ALARM_MIN_ADDR, alarmMin);
       rotaryMove = 0;
       break;
     case STATE_SET_CLOCK_HR: // State 4
       if (menuReleased == true) {state = STATE_SET_CLOCK_MIN;}
       else if (rotaryMove != 0) {
-        RTC.adjust(DateTime(now.year(), now.month(), now.day(), (now.hour() + rotaryMove) % 24, now.minute(), now.second()));
+        int h = (now.hour() + rotaryMove < 0) ? 23 : (now.hour() + rotaryMove) % 24;
+        RTC.adjust(DateTime(now.year(), now.month(), now.day(), h, now.minute(), now.second()));
         rotaryMove = 0;
       }
       break;
     case STATE_SET_CLOCK_MIN: // State 5
       if (menuReleased == true) {state = STATE_SET_CLOCK_SEC;}
       else if (rotaryMove != 0) {
-        RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), (now.minute() + rotaryMove) % 60, now.second()));
+        int m = (now.minute() + rotaryMove < 0) ? 59 : (now.minute() + rotaryMove) % 60;
+        RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), m, now.second()));
         rotaryMove = 0;
       }
       break;
     case STATE_SET_CLOCK_SEC: // State 6
       if (menuReleased == true) {state = STATE_SET_CLOCK_UP;}
       else if (rotaryMove != 0) {
-        RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), now.minute(), (now.second() + rotaryMove) % 60));
+        int s = (now.second() + rotaryMove < 0) ? 59 : (now.second() + rotaryMove) % 60;
+        RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), now.minute(), s));
         rotaryMove = 0;
       }
       break;
@@ -396,9 +391,9 @@ void setAlarmDisplay() {
   if (alarmHour <= 11) {
     leds[(alarmHour*5+led_offset)%NUM_LEDS].r = 255;
   } else {
-    leds[((alarmHour - 12)*5+led_offset-1)%NUM_LEDS].r = 25;    
+    leds[((alarmHour - 12)*5+led_offset-1)%NUM_LEDS].r = 50;    
     leds[((alarmHour - 12)*5+led_offset)%NUM_LEDS].r = 255;
-    leds[((alarmHour - 12)*5+led_offset+1)%NUM_LEDS].r = 25;
+    leds[((alarmHour - 12)*5+led_offset+1)%NUM_LEDS].r = 50;
   }
   leds[(alarmMin+led_offset)%NUM_LEDS].g = 100;
   flashTime = millis();
@@ -424,9 +419,9 @@ void setClockDisplay(DateTime now) {
   if (now.hour() <= 11) {
     leds[(now.hour()*5+led_offset)%NUM_LEDS].r = 255;
   } else {
-    leds[((now.hour() - 12)*5+led_offset-1)%NUM_LEDS].r = 255;
+    leds[((now.hour() - 12)*5+led_offset-1)%NUM_LEDS].r = 50;
     leds[((now.hour() - 12)*5+led_offset)%NUM_LEDS].r = 255;   
-    leds[((now.hour() - 12)*5+led_offset+1)%NUM_LEDS].r = 255;
+    leds[((now.hour() - 12)*5+led_offset+1)%NUM_LEDS].r = 50;
   }
   flashTime = millis();
   if (state == STATE_SET_CLOCK_HR && flashTime%300 >= 150) {
@@ -481,8 +476,8 @@ void alarmDisplay() {
       }
       break;
     case 2:
-      LEDPosition = ((millis() - alarmTrigTime)/300);
-      reverseLEDPosition = NUM_LEDS - LEDPosition;
+      int8_t LEDPosition = (millis() - alarmTrigTime)/300;
+      int8_t reverseLEDPosition = NUM_LEDS - LEDPosition;
       // Add here calculation of 1st LED, Last LED and Middle LED
       if (LEDPosition >= 0 && LEDPosition <= (NUM_LEDS/2-1)) {
         for (int i = 0; i < LEDPosition; i++) {
@@ -506,14 +501,13 @@ void alarmDisplay() {
       }
       break;
     case 3:
-      fadeTime = 60000;
-      brightFadeRad = (millis() - alarmTrigTime)/fadeTime; // Divided by the time period of the fade up.
-      if (millis() > alarmTrigTime + fadeTime) LEDBrightness = 255;
-      else LEDBrightness = 255.0*(1.0+sin((1.57*brightFadeRad)-1.57));
+      brightFadeRad = (millis() - alarmTrigTime)/FADE_TIME_MS; // Divided by the time period of the fade up.
+      if (millis() > alarmTrigTime + FADE_TIME_MS) brightness = 255;
+      else brightness = (int)(255.0*(1.0+sin(1.57*brightFadeRad-1.57)));
       for (int i = 0; i < NUM_LEDS; i++) {
-        leds[i].r = LEDBrightness;
-        leds[i].g = LEDBrightness;
-        leds[i].b = LEDBrightness;
+        leds[i].r = brightness;
+        leds[i].g = brightness;
+        leds[i].b = brightness;
       }
       break;
   }
@@ -551,12 +545,12 @@ void countDownDisplay(DateTime now) {
       switch (demoIntro) {
         case 0:
           for (int i = 0; i < j; i++) {leds[(i+led_offset+1)%NUM_LEDS].b = 20;}
-          if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
+          if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
           if (j == NUM_LEDS) {demoIntro = 1;}
           break;
         case 1:
           for (int i = 0; i < j; i++) {leds[(i+led_offset+1)%NUM_LEDS].b = 20;}
-          if (currentMillis - previousMillis > timeInterval) {j--; previousMillis = currentMillis;}
+          if (currentMillis - previousMillis > TIME_INTERVAL) {j--; previousMillis = currentMillis;}
           if (j < 0) {demoIntro = 0;}
           break;
       }
@@ -578,42 +572,42 @@ void runDemo(DateTime now) {
       break;
     case 1:
       for (int i = 0; i < j; i++) {leds[i].r = 255;}
-      if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
+      if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
       if (j == NUM_LEDS) {j = 0; demoIntro++;}
       break;
     case 2:
       for (int i = j; i < NUM_LEDS; i++) {leds[i].r = 255;}
-      if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
+      if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
       if (j == NUM_LEDS) {j = 0; demoIntro++;}
       break;
     case 3:
       for (int i = 0; i < j; i++) {leds[i].g = 255;}
-      if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
+      if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
       if (j == NUM_LEDS) {j = 0; demoIntro++;}
       break;
     case 4:
       for (int i = j; i < NUM_LEDS; i++) {leds[i].g = 255;}
-      if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
+      if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
       if (j == NUM_LEDS) {j = 0; demoIntro++;}
       break;
     case 5:
       for (int i = 0; i < j; i++) {leds[i].b = 255;}
-      if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
+      if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
       if (j == NUM_LEDS) {j = 0; demoIntro++;}
       break;
     case 6:
       for (int i = j; i < NUM_LEDS; i++) {leds[i].b = 255;}
-      if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
+      if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
       if (j == NUM_LEDS) {j = 0; demoIntro++;}
       break;
     case 7:
       for (int i = 0; i < j; i++) {leds[i] = CRGB::White;}
-      if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
+      if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
       if (j == NUM_LEDS) {j = 0; demoIntro++;}
       break;
     case 8:
       for (int i = j; i < NUM_LEDS; i++) {leds[i] = CRGB::White;}
-      if (currentMillis - previousMillis > timeInterval) {j++; previousMillis = currentMillis;}
+      if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
       if (j == NUM_LEDS) {
         demoIntro = 0;
         clockMode = RTC.readnvram(CLOCK_MODE_ADDR);  // Return to kept clock mode
@@ -676,9 +670,9 @@ void minimalClock(DateTime now) {
 // # Red LEDs for hours, 1 LED per min and sec.
 void basicClock(DateTime now) {
   unsigned char hourPos = (now.hour()%12)*5 + (now.minute()+6)/12;
-  leds[(hourPos+led_offset-1)%NUM_LEDS] = CRGB::Red;
+  leds[(hourPos+led_offset-1)%NUM_LEDS].r = 50;
   leds[(hourPos+led_offset)%NUM_LEDS] = CRGB::Red;
-  leds[(hourPos+led_offset+1)%NUM_LEDS] = CRGB::Red;
+  leds[(hourPos+led_offset+1)%NUM_LEDS].r = 50;
   // Mix colors if the same LED is chosen
   leds[(now.minute()+led_offset)%NUM_LEDS].g = 255;
   leds[(now.second()+led_offset)%NUM_LEDS].b = 255;
@@ -697,7 +691,7 @@ void smoothSecond(DateTime now) {
   fracOfSec = (millis() - newSecTime)/cyclesPerSecFloat;  // This divides by 733, but should be 1000 and not sure why???
   if (subSeconds < cyclesPerSec) {
     secondBrightness = 50.0*(1.0+sin((3.14*fracOfSec)-1.57));
-    secondBrightness2 = 50.0*(1.0+sin((3.14*fracOfSec)+1.57));
+    secondBrightness2 = 50.0*(1.0+sin((3.14*fracOfSec)+1.57));  // TODO: replace with 100-secondBrightness, followed with replace secondBrightness to brightness
   }
   leds[(now.second()+led_offset)%NUM_LEDS].b = secondBrightness;
   leds[(now.second()+led_offset+NUM_LEDS-1)%NUM_LEDS].b = secondBrightness2;
@@ -722,12 +716,12 @@ void starryNightClock(DateTime now) {
     old = now;
   } 
   float m = (float) (millis() % 2000) / 3000.0;
-  breathBrightness = (2.0-m)*15.0*(1.0+sin(m*starBlinks-0.7));
-  breathBrightness = min(breathBrightness, 100);  // cut numbers > 100
-  breathBrightness = (breathBrightness < 15)?0:breathBrightness;  // cut numbers < 30
-  leds[star].r = breathBrightness;
-  leds[star].g = breathBrightness;
-  leds[star].b = breathBrightness;
+  brightness = (2.0-m)*15.0*(1.0+sin(m*starBlinks-0.7));
+  brightness = min(brightness, 100);  // cut numbers > 100
+  brightness = (brightness < 15)?0:brightness;  // cut numbers < 30
+  leds[star].r = brightness;
+  leds[star].g = brightness;
+  leds[star].b = brightness;
 }
 
 // Running white light over clock round. Full round in 1 second.
@@ -738,16 +732,16 @@ void minimalMilliSec(DateTime now) {
     newSecTime = millis();
   } 
   // set hour, min & sec LEDs
-  unsigned char hourPos = ((now.hour()%12)*5 + (now.minute()+6)/12);
+  unsigned char hourPos = (now.hour()%12)*5 + (now.minute()+6)/12;
   subSeconds = (((millis() - newSecTime)*60)/cyclesPerSec)%60;  // This divides by 733, but should be 1000 and not sure why???
   // Millisec lights are set first, so hour/min/sec lights override and don't flicker as millisec passes
   leds[(subSeconds+led_offset)%NUM_LEDS].r = 50;
   leds[(subSeconds+led_offset)%NUM_LEDS].g = 50;
   leds[(subSeconds+led_offset)%NUM_LEDS].b = 50;
   // The colours are set last, so if on same LED mixed colours are created
-  leds[(hourPos+led_offset-1)%NUM_LEDS].r = 255;   
+  leds[(hourPos+led_offset-1)%NUM_LEDS].r = 50;   
   leds[(hourPos+led_offset)%NUM_LEDS].r = 255;
-  leds[(hourPos+led_offset+1)%NUM_LEDS].r = 255;
+  leds[(hourPos+led_offset+1)%NUM_LEDS].r = 50;
   leds[(now.minute()+led_offset)%NUM_LEDS].g = 255;
   leds[(now.second()+led_offset)%NUM_LEDS].b = 255;
 }
@@ -774,12 +768,12 @@ void simplePendulum(DateTime now) {
 }
 
 void breathingClock(DateTime now) {
-  breathBrightness = 30.0*(1.0+sin((3.14*millis()/2000.0)-1.57)) + 2;
+  brightness = 30.0*(1.0+sin((3.14*millis()/2000.0)-1.57)) + 2;
   for (int i = 0; i < NUM_LEDS; i += 5) {
     // Apply to every 5th LED (5-minute ticks)
-    leds[i].r = breathBrightness;
-    leds[i].g = breathBrightness;
-    leds[i].b = breathBrightness;
+    leds[i].r = brightness;
+    leds[i].g = brightness;
+    leds[i].b = brightness;
   }
   basicClock(now);
 }
