@@ -61,7 +61,7 @@ volatile boolean alarmSet; // Whether the alarm is set or not
 #define ALARM_MODE_ADDR  4 // Address of where the alarm mode is stored in the NVRAM
 #define LED_OFFSET_ADDR  5 // Address of where the LED offset is stored in the NVRAM
 boolean alarmTrig = false; // Whether the alarm has been triggered or not
-long alarmTrigTime; // Milli seconds since the alarm was triggered
+uint32_t alarmTrigTime; // Milli seconds since the alarm was triggered
 boolean countDown = false;
 long countDownTime = 0;
 long currentCountDown = 0;
