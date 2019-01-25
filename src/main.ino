@@ -37,8 +37,6 @@ Encoder rotary1(PIN2, PIN3); // Setting up the Rotary Encoder
 DateTime old; // Variable to compare new and old time, to see if it has moved on.
 int rotary1Pos = 0;
 int subSeconds; // 60th's of a second
-int secondBrightness;
-int secondBrightness2;
 int brightness = 0;
 long newSecTime; // Variable to record when a new second starts, allowing to create milli seconds
 long flashTime;
@@ -493,7 +491,7 @@ void alarmDisplay() {
         }           
       } 
       if (reverseLEDPosition <= (NUM_LEDS-1) && reverseLEDPosition >= (NUM_LEDS/2+1)) {
-        for (int i = (NUM_LEDS-1); i > reverseLEDPosition; i--) {
+        for (int i = NUM_LEDS-1; i > reverseLEDPosition; i--) {
           leds[(i+led_offset)%NUM_LEDS].r = 5;
           leds[(i+led_offset)%NUM_LEDS].g = 5;
           leds[(i+led_offset)%NUM_LEDS].b = 5;
@@ -689,12 +687,9 @@ void smoothSecond(DateTime now) {
   } 
   // set hour, min & sec LEDs
   fracOfSec = (millis() - newSecTime)/cyclesPerSecFloat;  // This divides by 733, but should be 1000 and not sure why???
-  if (subSeconds < cyclesPerSec) {
-    secondBrightness = 50.0*(1.0+sin((3.14*fracOfSec)-1.57));
-    secondBrightness2 = 50.0*(1.0+sin((3.14*fracOfSec)+1.57));  // TODO: replace with 100-secondBrightness, followed with replace secondBrightness to brightness
-  }
-  leds[(now.second()+led_offset)%NUM_LEDS].b = secondBrightness;
-  leds[(now.second()+led_offset+NUM_LEDS-1)%NUM_LEDS].b = secondBrightness2;
+  if (subSeconds < cyclesPerSec) { brightness = 50.0*(1.0+sin((3.14*fracOfSec)-1.57)); }
+  leds[(now.second()+led_offset)%NUM_LEDS].b = brightness;
+  leds[(now.second()+led_offset-1)%NUM_LEDS].b = 100 - brightness;
 }
 
 // Constant lit 5-minute ticks + Basic clock
@@ -718,7 +713,7 @@ void starryNightClock(DateTime now) {
   float m = (float) (millis() % 2000) / 3000.0;
   brightness = (2.0-m)*15.0*(1.0+sin(m*starBlinks-0.7));
   brightness = min(brightness, 100);  // cut numbers > 100
-  brightness = (brightness < 15)?0:brightness;  // cut numbers < 30
+  brightness = (brightness < 15)?0:brightness;  // cut numbers < 15
   leds[star].r = brightness;
   leds[star].g = brightness;
   leds[star].b = brightness;
