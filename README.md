@@ -24,8 +24,6 @@ See the PDF chart.
 TODO: Update the chart with rotation settings and with exit from Alarm/Timer modes.
 ```
 
-The clock consumes about 1.5A @ 5V in worst case (white demo). Therefore, usual 2A USB charger is enough to power it up.
-
 # Changes vs. original clock
 - Clock can be rotated by 90 degrees. This is useful for displaying the clock with the knob on the top (like traditional stopwatch) or on the right side (like tratitional watch).
 - Move rotary button from A3 to D4: this helps ease of assembly. This change is *not shown* in the breadboard PNG.
@@ -74,7 +72,21 @@ It's hard to find large enough 3D printing service or CNC milling service. So I 
 
 Remember to paint the front side of the 3D model and inner ring with black. This stops unwanted repflections and improves the user experience (WOW effect).
 
-Per spare compartments: normally 1 compartment is populated with arduino electronics and other with PSU. In theory, 3 compartments can be used for 14400 Li-Ion or AAA Ni-MH batteries. Batteries might provide backup power up to 20 hours. I run my clock from AC mains.
+## Electronics
+The clock consumes about 1.5A @ 5V in worst case (white demo). Therefore, usual 2A USB charger is enough to power it up.
+
+Per spare compartments: normally 1 compartment is populated with arduino electronics and the other one with PSU. In theory, 3 compartments can be used for 14400 Li-Ion or AAA Ni-MH batteries. Batteries might provide backup power up to 20 hours. I run my clock from AC mains.
+
+Alternatives for power supply:
+- Use rechargeable batteries.
+- Use regular USB charger (2A or more).
+- Hide the USB charger electonics in sepatate compartment and use IEC320-C8 socket for AC mains.
+
+Lithium battery in RTC should be replaced once in few years. Rarely enough to make easy access to the electronics.
+
+As LED strip, it's 1m 60 of WS8212B LEDs used. Any buzzer from old PC or Tablet or small loudspeaker is good.
 
 # TODO
 - Move alarm to RTC. This allows daily alarm.
+- More pictures!
+- Add PCB... (really?)
