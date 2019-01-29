@@ -27,6 +27,7 @@ TODO: Update the chart with rotation settings and with exit from Alarm/Timer mod
 # Changes vs. original clock
 - Clock can be rotated by 90 degrees. This is useful for displaying the clock with the knob on the top (like traditional stopwatch) or on the right side (like tratitional watch).
 - Move rotary button from A3 to D4: this helps ease of assembly. This change is *not shown* in the breadboard PNG.
+- Added rainbow to demo, endless demo, exit from demo by click.
 - Use RTC NVRAM instead of EEPROM: this saves EEPROM wear out.
 - Refactor menu button work. Less code, easy readable.
 - Keep clock mode and restore it after power failure.
@@ -88,5 +89,6 @@ As LED strip, it's 1m 60 of WS8212B LEDs used. Any buzzer from old PC or Tablet 
 
 # TODO
 - Move alarm to RTC. This allows daily alarm.
+- Buzzer sound isn't nice, kinda quack. Improve.
 - More pictures!
 - Add PCB... (really?)
