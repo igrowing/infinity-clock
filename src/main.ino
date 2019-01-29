@@ -74,7 +74,7 @@ volatile int j = 0;  // LED position in fast transition effects
 long currentMillis;
 long previousMillis = 0;
 float brightFadeRad;
-volatile uint8_t star;
+volatile uint8_t star = 0;
 volatile float starBlinks;
 volatile bool isBuzzerActive;  // Flag to avoid repetitive buzzer calls
 volatile int8_t led_offset;  // Allows rotate clock by 90 segrees left/right 
@@ -104,6 +104,13 @@ volatile boolean countTime = false;
 long menuTimePressed;
 volatile long lastRotary;
 int pendulumPos;
+
+#define R_SHIFT	0
+#define G_SHIFT	20
+#define B_SHIFT	40
+uint8_t color_intensity [] = {100, 95, 90, 85, 80, 75, 70, 65, 60, 55, 50, 45, 40, 35, 30, 25, 20, 15, 10, 5, 
+                              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+                              5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100};
 
 void setup() {
   // Set up all pins
@@ -606,10 +613,12 @@ void runDemo(DateTime now) {
     case 8:
       for (int i = j; i < NUM_LEDS; i++) {leds[i] = CRGB::White;}
       if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
-      if (j == NUM_LEDS) {
-        demoIntro = 0;
-        clockMode = RTC.readnvram(CLOCK_MODE_ADDR);  // Return to kept clock mode
-      }
+      if (j == NUM_LEDS) {j = 0; demoIntro++;}
+      break;
+    case 9:
+      rainbow();
+      // if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
+      if (currentMillis - previousMillis > TIME_INTERVAL * 5000) {previousMillis = currentMillis; demoIntro = 1; j = 0; }
       break;
   }
 }
@@ -773,47 +782,17 @@ void breathingClock(DateTime now) {
   basicClock(now);
 }
 
+void rainbow() {
+  // Set/progress initial position for the rainbow.
+  star++;
+  star = star % NUM_LEDS;
 
-// // Cycle through the color wheel, equally spaced around the belt
-// void rainbowCycle(uint8_t wait)
-// {
-//   uint16_t i, j1;
-//   for (j1=0; j1 < 384 * 5; j1++) {     // 5 cycles of all 384 colors in the wheel
-//     for (i=0; i < NUM_LEDS; i++)  {
-//       // tricky math! we use each pixel as a fraction of the full 384-color
-//       // wheel (thats the i / strip.numPixels() part)
-//       // Then add in j which makes the colors go around per pixel
-//       // the % 384 is to make the wheel cycle around
-//       uint8_t colors[3];
-//       wheel(((i * 384 / NUM_LEDS) + j) % 384, colors);
-//       leds[i+LED_OFFSET].r = colors[0];
-//       leds[i+LED_OFFSET].g = colors[1];
-//       leds[i+LED_OFFSET].b = colors[2];
-//     }
-//     delay(wait);
-//   }
-// }
-
-// //Input a value 0 to 384 to get a color value.
-// //The colours are a transition r - g - b - back to r
-// void wheel(uint16_t WheelPos, uint8_t colors[]) {
-//   switch(WheelPos / 128)
-//   {
-//     case 0:
-//       colors[0] = 127 - WheelPos % 128; // red down
-//       colors[1] = WheelPos % 128;       // green up
-//       colors[2] = 0;                    // blue off
-//       break;
-//     case 1:
-//       colors[1] = 127 - WheelPos % 128; // green down
-//       colors[2] = WheelPos % 128;       // blue up
-//       colors[0] = 0;                    // red off
-//       break;
-//     case 2:
-//       colors[2] = 127 - WheelPos % 128; // blue down
-//       colors[0] = WheelPos % 128;       // red up
-//       colors[1] = 0;                    // green off
-//       break;
-//   }
-// }
+  // Fill the rainbow
+  for (int i = 0; i < NUM_LEDS; i++) {
+    leds[i].r = color_intensity[(star + i + R_SHIFT) % NUM_LEDS];
+    leds[i].g = color_intensity[(star + i + G_SHIFT) % NUM_LEDS];
+    leds[i].b = color_intensity[(star + i + B_SHIFT) % NUM_LEDS];
+  }
+  delay(10);
+}
 
