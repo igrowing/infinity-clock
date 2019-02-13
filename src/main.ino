@@ -23,8 +23,8 @@ RTC_DS1307 RTC;     // Establishes the chipset of the Real Time Clock
 #define PIN_LEDS    A0
 #define PIN_MENU    PIN4
 #define NUM_LEDS    60    // Number of LEDs in strip
-#define LED_OFFSET_L 0    // Adjust by LED position/shift in the circle
-#define LED_OFFSET_R 45  // Adjust by LED position/shift in the circle
+#define LED_OFFSET_L 52    // Adjust by LED position/shift in the circle
+#define LED_OFFSET_R 37    // Adjust by LED position/shift in the circle
 #define HOLD_TIME_MS 1500
 #define DEMO_TIME_S 12 // seconds
 #define ROTARY_SET_TIME_MS 300
@@ -143,7 +143,7 @@ void setup() {
   alarmHour = (alarmHour >= 24)?0:alarmHour;
   alarmSet = (alarmSet > 1)?false:alarmSet;
   alarmMode = (alarmMode >= ALARM_MODE_MAX)?0:alarmMode;
-  led_offset = (led_offset == LED_OFFSET_L || led_offset == LED_OFFSET_R)?led_offset:0;
+  led_offset = (led_offset == LED_OFFSET_L || led_offset == LED_OFFSET_R)?led_offset:LED_OFFSET_L;
   // Write sanitized data back to NVRAM for further proper boot.
   RTC.writenvram(CLOCK_MODE_ADDR, clockMode); 
   RTC.writenvram(ALARM_MIN_ADDR, alarmMin); 
@@ -371,26 +371,21 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
 }
 
 void setAlarmDisplay() {
-  for (int i = 0; i < NUM_LEDS; i += 5) {
-    // Apply to every 5th LED (5-minute ticks)
-    leds[i].r = 100;
-    leds[i].g = 100;
-    leds[i].b = 100;
-  }
-
   if (alarmSet == 0) {
     for (int i = 0; i < NUM_LEDS; i += 5) { // Sets background to red, to state that alarm IS NOT set
       // Apply to every 5th LED (5-minute ticks)
-      leds[i].r = 20;
-      leds[i].g = 0;
-      leds[i].b = 0;
+      pendulumPos = (i+led_offset)%NUM_LEDS;
+      leds[pendulumPos].r = 20;
+      leds[pendulumPos].g = 0;
+      leds[pendulumPos].b = 0;
     }     
   } else {
     for (int i = 0; i < NUM_LEDS; i += 5) { // Sets background to green, to state that alarm IS set
       // Apply to every 5th LED (5-minute ticks)
-      leds[i].r = 0;
-      leds[i].g = 20;
-      leds[i].b = 0;
+      pendulumPos = (i+led_offset)%NUM_LEDS;
+      leds[pendulumPos].r = 0;
+      leds[pendulumPos].g = 20;
+      leds[pendulumPos].b = 0;
     }     
   }
   if (alarmHour <= 11) {
@@ -415,12 +410,8 @@ void setAlarmDisplay() {
 }
 
 void setClockDisplay(DateTime now) {
-  for (int i = 0; i < NUM_LEDS; i += 5) {
-    // Apply to every 5th LED (5-minute ticks)
-    leds[i].r = 10;
-    leds[i].g = 10;
-    leds[i].b = 10;
-  } 
+  fill_ticks(10);
+
   if (now.hour() <= 11) {
     leds[(now.hour()*5+led_offset)%NUM_LEDS].r = 255;
   } else {
@@ -457,13 +448,17 @@ void runBuzzer(int mode) {
   if (TIMER == mode) {
     EasyBuzzer.beep(BEEP_TONE, 300, 500, 2, 1000, 5, clearBuzzer);  // For end of timer beep 5 double beeps  
   } else {
-    EasyBuzzer.beep(BEEP_TONE, 300, 200, 3, 1000, 0); // , callback  // For alarm beep 3 beeps endlessly (until rotary rotate)  
+    EasyBuzzer.beep(BEEP_TONE, 300, 200, 3, 1000, 0);  // For alarm beep 3 beeps endlessly (until rotary rotate)  
   }
   isBuzzerActive = true;
 }
-// Check if alarm is active and if is it time for the alarm to trigger
+
 void alarm(DateTime now) {
-  if ((alarmMin == now.minute()%60) && (alarmHour == now.hour()%24)) { //check if the time is the same to trigger alarm
+  // Don't alarm if in set mode.
+  if (state == STATE_SET_ALARM_HR || state == STATE_SET_ALARM_MIN) return;
+
+  // Alarm if not in set mode and alarm time is now.
+  if ((alarmMin == now.minute()%60) && (alarmHour == now.hour()%24)) {
     alarmTrig = true;
     alarmTrigTime = millis();
   }
@@ -703,12 +698,7 @@ void smoothSecond(DateTime now) {
 
 // Constant lit 5-minute ticks + Basic clock
 void outlineClock(DateTime now) {
-  for (int i = 0; i < NUM_LEDS; i += 5) {
-    // Apply to every 5th LED (5-minute ticks)
-    leds[i].r = 100;
-    leds[i].g = 100;
-    leds[i].b = 100;
-  }
+  fill_ticks(100);
   basicClock(now);
 }
 
@@ -766,20 +756,23 @@ void simplePendulum(DateTime now) {
     pendulumPos = (pendulumPos < 0)?-pendulumPos:pendulumPos;
   }
   // Pendulum lights are set first, so hour/min/sec lights override and don't flicker as millisec passes
-  leds[pendulumPos].r = 100;
-  leds[pendulumPos].g = 100;
-  leds[pendulumPos].b = 100;
+  leds[pendulumPos] = CRGB::WhiteSmoke;
 }
 
 void breathingClock(DateTime now) {
   brightness = 30.0*(1.0+sin((3.14*millis()/2000.0)-1.57)) + 2;
+  fill_ticks(brightness);
+  basicClock(now);
+}
+
+void fill_ticks(uint8_t bright) {
   for (int i = 0; i < NUM_LEDS; i += 5) {
     // Apply to every 5th LED (5-minute ticks)
-    leds[i].r = brightness;
-    leds[i].g = brightness;
-    leds[i].b = brightness;
+    pendulumPos = (i+led_offset)%NUM_LEDS;
+    leds[pendulumPos].r = bright;
+    leds[pendulumPos].g = bright;
+    leds[pendulumPos].b = bright;
   }
-  basicClock(now);
 }
 
 void rainbow() {
