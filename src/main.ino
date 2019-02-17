@@ -212,7 +212,13 @@ void loop() {
 }
 
 void printDateTime() {
-  DateTime now = RTC.now();      
+  DateTime now = RTC.now();
+  // Sanity check for stored time
+  if (now.hour() > 23 || now.minute() > 59 || now.second() > 59 || now.month() > 12 || now.day() > 31) {
+    RTC.adjust(DateTime(2018, 1, 1, 1, 1, 1));
+    now = RTC.now();
+    Serial.println("Fixed date and time.");
+  }      
   Serial.print("Hour time is... "); Serial.println(now.hour());
   Serial.print("Min time is... "); Serial.println(now.minute());
   Serial.print("Sec time is... "); Serial.println(now.second());
@@ -245,7 +251,7 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
     case STATE_CLOCK: // State 0
       // Progress next mode from current mode.
       if(rotaryMove != 0) {
-        clockMode = (clockMode + rotaryMove) % CLOCK_MODE_MAX; // Never exceed CLOCK_MODE_MAX
+        clockMode = (clockMode + rotaryMove < 0) ? CLOCK_MODE_MAX - 1 : (clockMode + rotaryMove) % CLOCK_MODE_MAX; // Never exceed CLOCK_MODE_MAX
         RTC.writenvram(CLOCK_MODE_ADDR, clockMode);
         rotaryMove = 0;
       } else if(menuReleased == true) {
@@ -257,7 +263,7 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
       break;
     case STATE_ALARM: // State 1
       if (rotaryMove != 0) {
-        alarmMode = (alarmMode + rotaryMove) % (ALARM_MODE_MAX + 1);  // Never exceed CLOCK_MODE_MAX but 0 is alarm off
+        alarmMode = (alarmMode + rotaryMove < 0) ? ALARM_MODE_MAX : (alarmMode + rotaryMove) % (ALARM_MODE_MAX + 1);  // Never exceed CLOCK_MODE_MAX but 0 is alarm off
         if (alarmMode == 0) {alarmSet = 0;}
         else {alarmSet = 1;}
       }          
