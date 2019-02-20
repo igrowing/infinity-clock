@@ -3,7 +3,7 @@
 This repo follows and inspired by http://barkengmad.com/rise-and-shine-led-clock/
 
 Original Morgan Barke's video:
-![See the magic](https://youtu.be/YErWfe0aTiQ "Yoohoo!")
+[See the magic](https://youtu.be/YErWfe0aTiQ "Yoohoo!")
 
 I like the original inifinity clock after reviewing dosen (or even more) similar devices. I appreciate Morgan's creativity and generosity making his project public. Sharing is caring, and I'm giving back :)
 
@@ -19,10 +19,8 @@ This project fixes few issues in original clock and improves usability, user exp
 - WOW effect :)
 
 # Usage
-See the PDF chart.
-```
-TODO: Update the chart with rotation settings and with exit from Alarm/Timer modes.
-```
+[See the PDF chart.](Infinity%20mirror%20clock%20user%20guide.pdf)
+
 
 # Changes vs. original clock
 - Clock can be rotated by 90 degrees. This is useful for displaying the clock with the knob on the top (like traditional stopwatch) or on the right side (like tratitional watch).
