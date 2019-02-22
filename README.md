@@ -24,7 +24,7 @@ This project fixes few issues in original clock and improves usability, user exp
 
 # Changes vs. original clock
 - Clock can be rotated by 90 degrees. This is useful for displaying the clock with the knob on the top (like traditional stopwatch) or on the right side (like tratitional watch).
-- Move rotary button from A3 to D4: this helps ease of assembly. This change is *not shown* in the breadboard PNG.
+- Move rotary button from A3 to D4: this helps ease of assembly.
 - Added rainbow to demo, endless demo, exit from demo by click.
 - Use RTC NVRAM instead of EEPROM: this saves EEPROM wear out.
 - Refactor menu button work. Less code, easy readable.
