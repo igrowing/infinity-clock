@@ -32,7 +32,7 @@ RTC_DS1307 RTC;     // Establishes the chipset of the Real Time Clock
 #define FADE_TIME_MS 60000
 
 struct CRGB leds[NUM_LEDS];  // Setting up the LED strip
-const CRGB DEMO_COLORS[] = {CRGB::Black, CRGB::Red, CRGB::Red, CRGB::Green, CRGB::Green, CRGB::Blue, CRGB::White, CRGB::White};
+const CRGB DEMO_COLORS[9] = {CRGB::Black, CRGB::Red, CRGB::Red, CRGB::Green, CRGB::Green, CRGB::Blue, CRGB::Blue, CRGB::White, CRGB::White};
 Encoder rotary1(PIN2, PIN3); // Setting up the Rotary Encoder
 
 DateTime old; // Variable to compare new and old time, to see if it has moved on.
