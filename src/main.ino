@@ -32,6 +32,7 @@ RTC_DS1307 RTC;     // Establishes the chipset of the Real Time Clock
 #define FADE_TIME_MS 60000
 
 struct CRGB leds[NUM_LEDS];  // Setting up the LED strip
+const CRGB DEMO_COLORS[] = {CRGB::Black, CRGB::Red, CRGB::Red, CRGB::Green, CRGB::Green, CRGB::Blue, CRGB::White, CRGB::White};
 Encoder rotary1(PIN2, PIN3); // Setting up the Rotary Encoder
 
 DateTime old; // Variable to compare new and old time, to see if it has moved on.
@@ -69,7 +70,7 @@ long startCountDown;
 int countDownMin;
 int countDownSec;
 int countDownFlash;
-int demoIntro = 0;
+int demo_mode = 0;
 volatile int j = 0;  // LED position in fast transition effects
 long currentMillis;
 long previousMillis = 0;
@@ -343,7 +344,7 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
           // Timer off, there is time + button pressed and released quickly ==> start countdown.
           else if (countDown == false && countDownTime > 0) {countDown = true; startCountDown = now.unixtime();}
           // Timer on + there's time OR Timer off + time gone + button is pressed & released, then demo State is displayed 
-          else {state = STATE_DEMO; demoIntro = 1; j = 0;}
+          else {state = STATE_DEMO; demo_mode = 1; j = 0;}
         } else { // if displaying the countdown + long click => the count down is reset
           countDown = false; countDownTime = 0; 
           currentCountDown = 0; j = 0; 
@@ -548,16 +549,16 @@ void countDownDisplay(DateTime now) {
     if (countDownTime == 0) {
       currentMillis = millis();
       clearLEDs();
-      switch (demoIntro) {
+      switch (demo_mode) {
         case 0:
           for (int i = 0; i < j; i++) {leds[(i+led_offset+1)%NUM_LEDS].b = 20;}
           if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
-          if (j == NUM_LEDS) {demoIntro = 1;}
+          if (j == NUM_LEDS) {demo_mode = 1;}
           break;
         case 1:
           for (int i = 0; i < j; i++) {leds[(i+led_offset+1)%NUM_LEDS].b = 20;}
           if (currentMillis - previousMillis > TIME_INTERVAL) {j--; previousMillis = currentMillis;}
-          if (j < 0) {demoIntro = 0;}
+          if (j < 0) {demo_mode = 0;}
           break;
       }
     } else if (countDownTime > 0 && flashTime%300 >= 150) {
@@ -571,55 +572,30 @@ void runDemo(DateTime now) {
   currentDemoTime = now.unixtime();
   currentMillis = millis();
   clearLEDs();
-  switch (demoIntro) {
+  switch (demo_mode) {
     case 0:
       timeDisplay(now);
       if (currentDemoTime - previousDemoTime > DEMO_TIME_S) {previousDemoTime = currentDemoTime;}
       break;
     case 1:
-      for (int i = 0; i < j; i++) {leds[i].r = 255;}
+    case 3:
+    case 5:
+    case 7:
+      for (int i = 0; i < j; i++) {leds[(i+led_offset+1)%NUM_LEDS] = DEMO_COLORS[demo_mode];}
       if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
-      if (j == NUM_LEDS) {j = 0; demoIntro++;}
+      if (j == NUM_LEDS) {j = 0; demo_mode++;}
       break;
     case 2:
-      for (int i = j; i < NUM_LEDS; i++) {leds[i].r = 255;}
-      if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
-      if (j == NUM_LEDS) {j = 0; demoIntro++;}
-      break;
-    case 3:
-      for (int i = 0; i < j; i++) {leds[i].g = 255;}
-      if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
-      if (j == NUM_LEDS) {j = 0; demoIntro++;}
-      break;
     case 4:
-      for (int i = j; i < NUM_LEDS; i++) {leds[i].g = 255;}
-      if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
-      if (j == NUM_LEDS) {j = 0; demoIntro++;}
-      break;
-    case 5:
-      for (int i = 0; i < j; i++) {leds[i].b = 255;}
-      if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
-      if (j == NUM_LEDS) {j = 0; demoIntro++;}
-      break;
     case 6:
-      for (int i = j; i < NUM_LEDS; i++) {leds[i].b = 255;}
-      if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
-      if (j == NUM_LEDS) {j = 0; demoIntro++;}
-      break;
-    case 7:
-      for (int i = 0; i < j; i++) {leds[i] = CRGB::White;}
-      if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
-      if (j == NUM_LEDS) {j = 0; demoIntro++;}
-      break;
     case 8:
-      for (int i = j; i < NUM_LEDS; i++) {leds[i] = CRGB::White;}
+      for (int i = j; i < NUM_LEDS; i++) {leds[(i+led_offset+1)%NUM_LEDS] = DEMO_COLORS[demo_mode];}
       if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
-      if (j == NUM_LEDS) {j = 0; demoIntro++;}
+      if (j == NUM_LEDS) {j = 0; demo_mode++;}
       break;
     case 9:
       rainbow();
-      // if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
-      if (currentMillis - previousMillis > TIME_INTERVAL * 5000) {previousMillis = currentMillis; demoIntro = 1; j = 0; }
+      if (currentMillis - previousMillis > TIME_INTERVAL * 5000) {previousMillis = currentMillis; demo_mode = 1; j = 0; }
       break;
   }
 }
