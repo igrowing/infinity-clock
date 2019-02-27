@@ -23,9 +23,9 @@ This project fixes few issues in original clock and improves usability, user exp
 
 # Changes vs. original clock
 - Clock can be rotated by 90 degrees. This is useful for displaying the clock with the knob on the top (like traditional stopwatch) or on the right side (like tratitional watch).
-- Move rotary button from A3 to D4: this helps ease of assembly.
 - Use RTC NVRAM instead of EEPROM: this saves EEPROM wear out.
 - Added rainbow to demo, endless demo, exit from demo by click.
+- Move rotary button from A3 to D4: this helps ease of assembly.
 - Refactor menu button work. Less code, easy readable.
 - Keep clock mode and restore it after power failure.
 - Refactor and make stable the rotary encoder.
@@ -57,7 +57,7 @@ Beside electronic components following material is needed:
 - Knob for rotary encoder. 6mm inner diameter, the rest is on your taste. From 1.5 to 18 USD on eBay.
 - Base plate made of layered wood or plastic for the back, 4-6mm thick, 38x38cm.
 - PMMA or polycarbonate sheet for the front, 2.5-3mm thick, 38x38cm.
-- Semi-transparent mirror, found on Amazon as "One Way Window Film Window". 
+- Semi-transparent mirror, found on Amazon as "One Way Window Film". 
 - Non-transparent mirror, found on Amazon.
 - Frame on your taste from local painting shop.
 - Wood or plastic for 3D model CNC milling. 16mm thick, 210x210mm (will be milled smaller). For CNC machine take 2-flute 20mm CEL carbide milling bits of 1/8".
@@ -68,7 +68,7 @@ or
 
 It's hard to find large enough 3D printing service or CNC milling service. So I split the clock to 4 equal parts. Connect them side to side. Insert all electronics/wires in the channels. Place the back base with non-transparent mirror on all 4 parts connected. And screw all together.
 
-Remember to paint the front side of the 3D model and inner ring with black. This stops unwanted repflections and improves the user experience (WOW effect).
+Remember to paint the front side of the 3D model and inner ring with black. This stops unwanted reflections and improves the user experience (WOW effect). In the current STL model the light slots are high. This makes less distinguished mirror effect. Connecting free side of pins with 4 mm strip of black duct tape makes light windows, not channels and improves the UX.
 
 ## Electronics
 The clock consumes about 1.5A @ 5V in worst case (white demo). Therefore, usual 2A USB charger is enough to power it up.
