@@ -560,6 +560,8 @@ void countDownDisplay(DateTime now) {
           if (currentMillis - previousMillis > TIME_INTERVAL) {j--; previousMillis = currentMillis;}
           if (j < 0) {demo_mode = 0;}
           break;
+        default:
+          demo_mode = 0;
       }
     } else if (countDownTime > 0 && flashTime%300 >= 150) {
       countDownMin = currentCountDown / 60;
