@@ -8,6 +8,7 @@ Original Morgan Barke's video:
 I like the original inifinity clock after reviewing dosen (or even more) similar devices. I appreciate Morgan's creativity and generosity for making his project public. Sharing is caring, and I'm giving back :)
 
 This project fixes few issues in original clock and improves usability, user experience, and build ease.
+[The clock demo in all modes (1 min 18 sec)](https://www.youtube.com/watch?v=9rUNe92n67c)
 
 # Features
 - 8 modes of _clock_ display.
@@ -88,4 +89,5 @@ As LED strip, it's 1m 60 of WS8212B LEDs used. Any buzzer from old PC or Tablet 
 - Move alarm to RTC. This allows daily alarm.
 - Buzzer sound isn't nice, kinda quack. Improve.
 - More pictures!
+- Add video user guide.
 - Add PCB... (really?)
