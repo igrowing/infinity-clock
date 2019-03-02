@@ -25,6 +25,15 @@ This project fixes few issues in original clock and improves usability, user exp
 # Usage
 [See the PDF chart.](Infinity%20mirror%20clock%20user%20guide.pdf)
 
+For fans of video guides:
+- [Choosing Display mode of clock](https://www.youtube.com/watch?v=vU_UOzZHfpM)
+- [Setting time and upright position](https://www.youtube.com/watch?v=-KVNCHQzmkM)
+- [Alarm usage](https://www.youtube.com/watch?v=D5s8VyNlAFA)
+- [Timer usage](https://www.youtube.com/watch?v=lTOYV0bmhKc)
+- [Jump to demo mode and back to clock](https://www.youtube.com/watch?v=sZ3GmazdSDI)
+- [Full user guide in one video](https://www.youtube.com/watch?v=MvB9e6Ny7ps)
+
+
 # Changes vs. original clock
 - Clock can be rotated by 90 degrees. This is useful for displaying the clock with the knob on the top (like traditional stopwatch) or on the right side (like tratitional watch).
 - Use RTC NVRAM instead of EEPROM: this saves EEPROM wear out.
@@ -91,5 +100,4 @@ As LED strip, it's 1m 60 of WS8212B LEDs used. Any buzzer from old PC or Tablet 
 # TODO
 - Move alarm to RTC. This allows daily alarm.
 - Buzzer sound isn't nice, kinda quack. Improve.
-- Add video user guide.
 - Add PCB... (really?)
