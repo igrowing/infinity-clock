@@ -2,6 +2,7 @@
 #pragma once
 #include <stdint.h>
 
+#define NUM_LEDS    60    // Number of LEDs in strip
 #define HOLD_TIME_MS 1500  // A press longer than this is a "long click"
 #define FADE_TIME_MS 60000 // Alarm mode 3: time to fade up from dark to full brightness
 
@@ -54,3 +55,8 @@ int16_t alarmRampPosition(uint32_t elapsedMs);
 
 // Brightness (0..255) of the fade-up alarm, `elapsedMs` after the alarm fired.
 uint8_t alarmFadeBrightness(uint32_t elapsedMs);
+
+// Strip index of the pendulum LED. `fracOfSec` is how far into the current second we are (0..1); `swing` is
+// +HALF_PI or -HALF_PI and selects the swing direction of this second. The pendulum hangs at the bottom of
+// the clock face (position 30) and swings 3 LEDs to each side.
+int pendulumLed(float fracOfSec, float swing, int ledOffset);

@@ -37,3 +37,13 @@ uint8_t alarmFadeBrightness(uint32_t elapsedMs) {
   float fadeRad = (float)elapsedMs / FADE_TIME_MS;  // Fraction of the fade-up period, 0.0 .. 1.0
   return (int)(255.0 * (1.0 + sin(HALF_PI_F * fadeRad - HALF_PI_F)));
 }
+
+int pendulumLed(float fracOfSec, float swing, int ledOffset) {
+  const float amplitude = 3.4f;  // LEDs from the centre; rounds to the 3 LEDs on each side
+  // Clamp the progress: it is NaN/infinite right after boot, before the length of a second is measured.
+  if (!(fracOfSec >= 0.0f)) fracOfSec = 0.0f;
+  if (fracOfSec > 1.0f) fracOfSec = 1.0f;
+  int offset = (int)lroundf(amplitude * sinf(3.14159265f * fracOfSec + swing));
+  int position = NUM_LEDS/2 - offset;  // On the clock face, 30 is the bottom
+  return (position + ledOffset) % NUM_LEDS;
+}

@@ -24,7 +24,6 @@ RTC_DS1307 RTC;     // Establishes the chipset of the Real Time Clock
 #define PIN_BUZZER  9      // OC1A (Timer1 hardware output). Must be D9 for the hardware tone.
 #define PIN_LEDS    A0
 #define PIN_MENU    PIN4
-#define NUM_LEDS    60    // Number of LEDs in strip
 #define DEMO_TIME_S 12 // seconds
 #define ROTARY_SET_TIME_MS 300
 #define TIME_INTERVAL 5
@@ -661,8 +660,7 @@ void simplePendulum(DateTime now) {
   } 
   fracOfSec = (millis() - newSecTime)/cyclesPerSecFloat;  // This divides by 733, but should be 1000 and not sure why???
   if (subSeconds < cyclesPerSec) {
-    pendulumPos = (NUM_LEDS/2 - led_offset - 3) % NUM_LEDS + 3.4*(1.0+sin((PI*fracOfSec)+swingBack));
-    pendulumPos = (pendulumPos < 0)?-pendulumPos:pendulumPos;
+    pendulumPos = pendulumLed(fracOfSec, swingBack, led_offset);
   }
   // Pendulum lights are set first, so hour/min/sec lights override and don't flicker as millisec passes
   leds[pendulumPos] = CRGB::WhiteSmoke;

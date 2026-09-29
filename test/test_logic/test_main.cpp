@@ -107,8 +107,60 @@ void test_fade_is_already_rising_at_10_seconds() { TEST_ASSERT_TRUE(alarmFadeBri
 void test_fade_halfway_value()        { TEST_ASSERT_INT_WITHIN(1, 74, alarmFadeBrightness(FADE_TIME_MS / 2)); }
 void test_fade_keeps_rising()         { TEST_ASSERT_TRUE(alarmFadeBrightness(45000) > alarmFadeBrightness(30000)); }
 
+// ---- pendulumLed ----
+static const float HALF_PI_T = 1.5707963f;
+static const int OFFSETS[2] = {LED_OFFSET_L, LED_OFFSET_R};
+
+// Position on the clock face (0 = 12 o'clock, 30 = bottom) relative to the bottom: -3 = three LEDs to the left.
+static int fromBottom(int stripIndex, int ledOffset) {
+  int p = ((stripIndex - ledOffset) % NUM_LEDS + NUM_LEDS) % NUM_LEDS;
+  return ((p - NUM_LEDS/2 + 90) % NUM_LEDS) - 30;
+}
+void test_pendulum_is_at_the_bottom_in_the_middle_of_a_swing() {
+  for (int i = 0; i < 2; i++) {
+    TEST_ASSERT_EQUAL(0, fromBottom(pendulumLed(0.5f, +HALF_PI_T, OFFSETS[i]), OFFSETS[i]));
+    TEST_ASSERT_EQUAL(0, fromBottom(pendulumLed(0.5f, -HALF_PI_T, OFFSETS[i]), OFFSETS[i]));
+  }
+}
+void test_pendulum_swings_equally_to_both_sides() {
+  for (int i = 0; i < 2; i++) {
+    for (int sw = 0; sw < 2; sw++) {
+      float swing = sw ? -HALF_PI_T : HALF_PI_T;
+      int lo = 99, hi = -99;
+      for (int k = 0; k <= 1000; k++) {
+        int d = fromBottom(pendulumLed(k / 1000.0f, swing, OFFSETS[i]), OFFSETS[i]);
+        if (d < lo) lo = d;
+        if (d > hi) hi = d;
+      }
+      TEST_ASSERT_EQUAL(-3, lo);
+      TEST_ASSERT_EQUAL(3, hi);
+    }
+  }
+}
+void test_pendulum_moves_clockwise_first_then_back() {
+  for (int i = 0; i < 2; i++) {
+    TEST_ASSERT_EQUAL(-3, fromBottom(pendulumLed(0.0f, +HALF_PI_T, OFFSETS[i]), OFFSETS[i]));
+    TEST_ASSERT_EQUAL(+3, fromBottom(pendulumLed(1.0f, +HALF_PI_T, OFFSETS[i]), OFFSETS[i]));
+    TEST_ASSERT_EQUAL(+3, fromBottom(pendulumLed(0.0f, -HALF_PI_T, OFFSETS[i]), OFFSETS[i]));
+    TEST_ASSERT_EQUAL(-3, fromBottom(pendulumLed(1.0f, -HALF_PI_T, OFFSETS[i]), OFFSETS[i]));
+  }
+}
+void test_pendulum_is_always_a_valid_led() {
+  float bad[] = {-5.0f, 0.0f, 0.5f, 1.0f, 3.0f, 1.0e9f, 0.0f / 0.0f, 1.0f / 0.0f, -1.0f / 0.0f};
+  for (int i = 0; i < 2; i++) {
+    for (unsigned b = 0; b < sizeof(bad)/sizeof(bad[0]); b++) {
+      int led = pendulumLed(bad[b], HALF_PI_T, OFFSETS[i]);
+      TEST_ASSERT_TRUE(led >= 0 && led < NUM_LEDS);
+    }
+  }
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_pendulum_is_at_the_bottom_in_the_middle_of_a_swing);
+  RUN_TEST(test_pendulum_swings_equally_to_both_sides);
+  RUN_TEST(test_pendulum_moves_clockwise_first_then_back);
+  RUN_TEST(test_pendulum_is_always_a_valid_led);
   RUN_TEST(test_fade_starts_dark);
   RUN_TEST(test_fade_full_at_the_end);
   RUN_TEST(test_fade_full_after_the_end);
