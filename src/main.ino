@@ -9,6 +9,7 @@
 //Add the following libraries to the respective folder for you operating system. See http://arduino.cc/en/Guide/Environment
 #include <FastLED.h> // FastSPI Library version 3.1.X from https://github.com/FastLED/FastLED. Version 3.0.X has a bug: all LEDs are green by default.
 #include <Wire.h> //This is to communicate via I2C. On arduino Uno & Nano use pins A4 for SDA (yellow/orange) and A5 for SCL (green). For other boards ee http://arduino.cc/en/Reference/Wire
+#include <clock_logic.h>  // Pure logic, unit-tested on PC (see test/)
 #include <RTClib.h>           // Include the RTClib library to enable communication with the real time clock.
 #include <Bounce2.h>          // Include the Bounce library for de-bouncing issues with push buttons.
 #include <Encoder.h>          // Include the Encoder library to read the out puts of the rotary encoders
@@ -30,7 +31,7 @@ RTC_DS1307 RTC;     // Establishes the chipset of the Real Time Clock
 #define TIME_INTERVAL 5
 #define FADE_TIME_MS 60000
 
-struct CRGB leds[NUM_LEDS];  // Setting up the LED strip
+CRGB leds[NUM_LEDS];  // Setting up the LED strip
 const CRGB DEMO_COLORS[9] = {CRGB::Black, CRGB::Red, CRGB::Red, CRGB::Green, CRGB::Green, CRGB::Blue, CRGB::Blue, CRGB::White, CRGB::White};
 Encoder rotary1(PIN2, PIN3); // Setting up the Rotary Encoder
 
@@ -194,7 +195,7 @@ void loop() {
   if (menuButton == true || rotaryMove != 0 || countTime == true) {buttonCheck(menuBouncer,now);}
 
   // clear LED array
-  memset(leds, 0, NUM_LEDS * 3);
+  fill_solid(leds, NUM_LEDS, CRGB::Black);  // memset(leds, ...) is ambiguous with FastLED 3.10+
   
   // Check alarm and trigger if the time matches
   if (alarmSet == true && alarmDay != now.day()) { // The alarmDay statement ensures it is a newly set alarm or repeat from previous day, not within the minute of an alarm cancel.
@@ -257,7 +258,7 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
     case STATE_CLOCK: // State 0
       // Progress next mode from current mode.
       if(rotaryMove != 0) {
-        clockMode = (clockMode + rotaryMove < 0) ? CLOCK_MODE_MAX - 1 : (clockMode + rotaryMove) % CLOCK_MODE_MAX; // Never exceed CLOCK_MODE_MAX
+        clockMode = wrapStep(clockMode, rotaryMove, CLOCK_MODE_MAX); // Never exceed CLOCK_MODE_MAX
         RTC.writenvram(CLOCK_MODE_ADDR, clockMode);
         rotaryMove = 0;
       } else if(menuReleased == true) {
@@ -269,7 +270,7 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
       break;
     case STATE_ALARM: // State 1
       if (rotaryMove != 0) {
-        alarmMode = (alarmMode + rotaryMove < 0) ? ALARM_MODE_MAX : (alarmMode + rotaryMove) % (ALARM_MODE_MAX + 1);  // Never exceed CLOCK_MODE_MAX but 0 is alarm off
+        alarmMode = wrapStep(alarmMode, rotaryMove, ALARM_MODE_MAX + 1);  // Never exceed CLOCK_MODE_MAX but 0 is alarm off
         if (alarmMode == 0) {alarmSet = 0;}
         else {alarmSet = 1;}
       }          
@@ -288,7 +289,7 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
       if (menuReleased == true) {
         state = STATE_SET_ALARM_MIN;
       } else {
-        alarmHour = (alarmHour + rotaryMove < 0) ? 23 : (alarmHour + rotaryMove) % 24;
+        alarmHour = wrapStep(alarmHour, rotaryMove, 24);
       }
       RTC.writenvram(ALARM_HR_ADDR, alarmHour);
       rotaryMove = 0;
@@ -299,7 +300,7 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
         alarmDay = 0;
         newSecTime = millis();
       } else {
-        alarmMin = (alarmMin + rotaryMove < 0) ? 59 : (alarmMin + rotaryMove) % 60;
+        alarmMin = wrapStep(alarmMin, rotaryMove, 60);
       }
       RTC.writenvram(ALARM_MIN_ADDR, alarmMin);
       rotaryMove = 0;
@@ -307,7 +308,7 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
     case STATE_SET_CLOCK_HR: // State 4
       if (menuReleased == true) {state = STATE_SET_CLOCK_MIN;}
       else if (rotaryMove != 0) {
-        int h = (now.hour() + rotaryMove < 0) ? 23 : (now.hour() + rotaryMove) % 24;
+        int h = wrapStep(now.hour(), rotaryMove, 24);
         RTC.adjust(DateTime(now.year(), now.month(), now.day(), h, now.minute(), now.second()));
         rotaryMove = 0;
       }
@@ -315,7 +316,7 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
     case STATE_SET_CLOCK_MIN: // State 5
       if (menuReleased == true) {state = STATE_SET_CLOCK_SEC;}
       else if (rotaryMove != 0) {
-        int m = (now.minute() + rotaryMove < 0) ? 59 : (now.minute() + rotaryMove) % 60;
+        int m = wrapStep(now.minute(), rotaryMove, 60);
         RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), m, now.second()));
         rotaryMove = 0;
       }
@@ -323,7 +324,7 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
     case STATE_SET_CLOCK_SEC: // State 6
       if (menuReleased == true) {state = STATE_SET_CLOCK_UP;}
       else if (rotaryMove != 0) {
-        int s = (now.second() + rotaryMove < 0) ? 59 : (now.second() + rotaryMove) % 60;
+        int s = wrapStep(now.second(), rotaryMove, 60);
         RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), now.minute(), s));
         rotaryMove = 0;
       }
@@ -364,10 +365,7 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
         } else { // Timer is off => set time silently.
           countDown = false;
           buzzerStop();
-          // Convert currentCountDown secs to mins, add change, fix by module, convert back to secs.
-          countDownTime = ((currentCountDown/60 + rotaryMove) % 60) * 60; 
-          // Go full clock (60 mins) if user rotates left from 0 minutes. (save rotation for ling timer).
-          if (countDownTime < 0) countDownTime = 3600;
+          countDownTime = countdownAfterRotate(currentCountDown, rotaryMove);
         }
       }
       rotaryMove = 0;
@@ -546,8 +544,8 @@ void alarmDisplay() {
       }
       break;
     case 2:
-      int8_t LEDPosition = (millis() - alarmTrigTime)/300;
-      int8_t reverseLEDPosition = NUM_LEDS - LEDPosition;
+      int16_t LEDPosition = alarmRampPosition(millis() - alarmTrigTime);
+      int16_t reverseLEDPosition = NUM_LEDS - LEDPosition;
       // Add here calculation of 1st LED, Last LED and Middle LED
       if (LEDPosition >= 0 && LEDPosition <= (NUM_LEDS/2-1)) {
         for (int i = 0; i < LEDPosition; i++) {
