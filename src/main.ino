@@ -10,6 +10,7 @@
 #include <FastLED.h> // FastSPI Library version 3.1.X from https://github.com/FastLED/FastLED. Version 3.0.X has a bug: all LEDs are green by default.
 #include <Wire.h> //This is to communicate via I2C. On arduino Uno & Nano use pins A4 for SDA (yellow/orange) and A5 for SCL (green). For other boards ee http://arduino.cc/en/Reference/Wire
 #include <clock_logic.h>  // Pure logic, unit-tested on PC (see test/)
+#include <menu_machine.h>  // Menu state machine, unit-tested on PC
 #include <RTClib.h>           // Include the RTClib library to enable communication with the real time clock.
 #include <Bounce2.h>          // Include the Bounce library for de-bouncing issues with push buttons.
 #include <Encoder.h>          // Include the Encoder library to read the out puts of the rotary encoders
@@ -109,9 +110,8 @@ volatile uint8_t alarmMode; // Variable of the alarm display mode
 
 Bounce menuBouncer = Bounce(PIN_MENU,30); // Instantiate a Bounce object with a 50 millisecond debounce time for the menu button
 boolean menuButton = false; 
-boolean menuPressed = false;
-boolean menuReleased = false;
 boolean menuPressSeen = false;  // A press was observed since the last release
+boolean menuIgnoreUntilRelease = false;  // The press that stopped the alarm must not act when released
 volatile int16_t rotaryMove = 0;
 volatile boolean countTime = false;
 long menuTimePressed;
@@ -264,150 +264,105 @@ void printDateTime() {
   Serial.print(F("Day is... ")); Serial.println(now.day());
 }
 
-void buttonCheck(Bounce& menuBouncer, DateTime now) {
-  countTime = ! menuBouncer.read();
-  if (countTime) { // otherwise will menuBouncer.duration will 
-    menuPressSeen = true;
-    menuTimePressed = menuBouncer.currentDuration();
-    if (menuTimePressed >= (HOLD_TIME_MS - 100) && menuTimePressed <= HOLD_TIME_MS) { // long click
-      // blink display while button is pressed to indicate "entered adjust mode"
-      clearLEDs();
-      LEDS.show();
-      delay(100);
-    }
+// Copy the live globals into the model the menu state machine works on ...
+MenuModel loadMenuModel() {
+  MenuModel m;
+  m.state = state;
+  m.clockMode = clockMode;
+  m.alarmMode = alarmMode;
+  m.alarmSet = alarmSet;
+  m.alarmHour = alarmHour;
+  m.alarmMin = alarmMin;
+  m.alarmDay = alarmDay;
+  m.ledOffset = led_offset;
+  m.alarmTrig = alarmTrig;
+  m.countDown = countDown;
+  m.countDownTime = countDownTime;
+  m.currentCountDown = currentCountDown;
+  m.startCountDown = startCountDown;
+  m.rotaryMove = rotaryMove;
+  m.countTime = countTime;
+  m.menuPressSeen = menuPressSeen;
+  m.menuTimePressed = menuTimePressed;
+  m.ignoreUntilRelease = menuIgnoreUntilRelease;
+  return m;
+}
+
+// ... and back.
+void storeMenuModel(const MenuModel& m) {
+  state = m.state;
+  clockMode = m.clockMode;
+  alarmMode = m.alarmMode;
+  alarmSet = m.alarmSet;
+  alarmHour = m.alarmHour;
+  alarmMin = m.alarmMin;
+  alarmDay = m.alarmDay;
+  led_offset = m.ledOffset;
+  alarmTrig = m.alarmTrig;
+  countDown = m.countDown;
+  countDownTime = m.countDownTime;
+  currentCountDown = m.currentCountDown;
+  startCountDown = m.startCountDown;
+  rotaryMove = m.rotaryMove;
+  countTime = m.countTime;
+  menuPressSeen = m.menuPressSeen;
+  menuTimePressed = m.menuTimePressed;
+  menuIgnoreUntilRelease = m.ignoreUntilRelease;
+}
+
+// Carry out what the menu state machine asked for.
+void applyMenuEffects(const MenuEffects& fx) {
+  if (fx.blinkDisplay) {  // blink display while button is pressed to indicate "entered adjust mode"
+    clearLEDs();
+    LEDS.show();
+    delay(100);
   }
-  menuReleased = menuBouncer.rose();
-  // Stop alarm on click or rotate
-  if (alarmTrig == true) {
-    alarmTrig = false;
-    clearBuzzer();
-    alarmDay = now.day(); // When the alarm is cancelled it will not display until next day. As without it, it would start again if within a minute, or completely turn off the alarm.
-    delay(300); // let time for the button to be released
-    return; // This return exits the buttonCheck function, so no actions are performs
-  }  
-  switch (state) {
-    case STATE_CLOCK: // State 0
-      // Progress next mode from current mode.
-      if(rotaryMove != 0) {
-        clockMode = wrapStep(clockMode, rotaryMove, CLOCK_MODE_MAX); // Never exceed CLOCK_MODE_MAX
-        RTC.writenvram(CLOCK_MODE_ADDR, clockMode);
-        rotaryMove = 0;
-      } else if(menuReleased == true) {
-        state = stateOnMenuRelease(menuPressSeen, menuTimePressed);
-        if (state == STATE_ALARM) newSecTime = millis();
-      }
-      break;
-    case STATE_ALARM: // State 1
-      if (rotaryMove != 0) {
-        alarmMode = wrapStep(alarmMode, rotaryMove, ALARM_MODE_MAX + 1);  // Never exceed CLOCK_MODE_MAX but 0 is alarm off
-        if (alarmMode == 0) {alarmSet = 0;}
-        else {alarmSet = 1;}
-      }          
-      Serial.print(F("alarmSet is ")); Serial.println(alarmSet);            
-      Serial.print(F("alarmMode is "));  Serial.println(alarmMode);
-      RTC.writenvram(ALARM_SET_ADDR, alarmSet);
-      RTC.writenvram(ALARM_MODE_ADDR, alarmMode);
-      rotaryMove = 0;
-      alarmTrig = false;
-      if (menuReleased == true) {
-        if (menuTimePressed <= HOLD_TIME_MS) {state = STATE_COUNTDOWN; j = 0;}// if displaying the alarm time, menu button is pressed & released, then clock is displayed
-        else {state = STATE_SET_ALARM_HR;} // if displaying the alarm time, menu button is held & released, then alarm hour can be set
-      }
-      break;
-    case STATE_SET_ALARM_HR: // State 2
-      if (menuReleased == true) {
-        state = STATE_SET_ALARM_MIN;
-      } else {
-        alarmHour = wrapStep(alarmHour, rotaryMove, 24);
-      }
-      RTC.writenvram(ALARM_HR_ADDR, alarmHour);
-      rotaryMove = 0;
-      break;
-    case STATE_SET_ALARM_MIN: // State 3
-      if (menuReleased == true) {
-        state = STATE_ALARM;
-        alarmDay = 0;
-        newSecTime = millis();
-      } else {
-        alarmMin = wrapStep(alarmMin, rotaryMove, 60);
-      }
-      RTC.writenvram(ALARM_MIN_ADDR, alarmMin);
-      rotaryMove = 0;
-      break;
-    case STATE_SET_CLOCK_HR: // State 4
-      if (menuReleased == true) {state = STATE_SET_CLOCK_MIN;}
-      else if (rotaryMove != 0) {
-        int h = wrapStep(now.hour(), rotaryMove, 24);
-        RTC.adjust(DateTime(now.year(), now.month(), now.day(), h, now.minute(), now.second()));
-        rotaryMove = 0;
-      }
-      break;
-    case STATE_SET_CLOCK_MIN: // State 5
-      if (menuReleased == true) {state = STATE_SET_CLOCK_SEC;}
-      else if (rotaryMove != 0) {
-        int m = wrapStep(now.minute(), rotaryMove, 60);
-        RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), m, now.second()));
-        rotaryMove = 0;
-      }
-      break;
-    case STATE_SET_CLOCK_SEC: // State 6
-      if (menuReleased == true) {state = STATE_SET_CLOCK_UP;}
-      else if (rotaryMove != 0) {
-        int s = wrapStep(now.second(), rotaryMove, 60);
-        RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), now.minute(), s));
-        rotaryMove = 0;
-      }
-      break;
-    case STATE_SET_CLOCK_UP:
-      if (menuReleased == true) {state = STATE_CLOCK;}
-      else if (rotaryMove != 0) {
-        led_offset = (led_offset == LED_OFFSET_L)?LED_OFFSET_R:LED_OFFSET_L;
-        RTC.writenvram(LED_OFFSET_ADDR, led_offset);
-        rotaryMove = 0;
-      }      
-      break;
-    case STATE_COUNTDOWN: // State 8
-      if(menuReleased == true) {  // Count down or switch to non-countdown mode if finished counting. 
-        if (menuTimePressed <= HOLD_TIME_MS) {
-          // Timer on + button pressed and released quickly ==> stop countdown.
-          if (countDown) {
-            countDown = false; 
-            countDownTime = 0; 
-            currentCountDown = 0; 
-            clearBuzzer();
-          }
-          // Timer off, there is time + button pressed and released quickly ==> start countdown.
-          else if (countDown == false && countDownTime > 0) {countDown = true; startCountDown = now.unixtime();}
-          // Timer on + there's time OR Timer off + time gone + button is pressed & released, then demo State is displayed 
-          else {state = STATE_DEMO; demo_mode = 1; j = 0;}
-        } else { // if displaying the countdown + long click => the count down is reset
-          countDown = false; countDownTime = 0; 
-          currentCountDown = 0; j = 0; 
-        } 
-      // Button not pressed/released + there is rotary move ==> set timer +/- minutes
-      } else if (rotaryMove != 0) {
-        // Timer on, time is gone + rotated ==> stop countdown, stop buzzer.
-        if (countDown && currentCountDown <= 0) {
-          countDownTime = 0; 
-          currentCountDown = 0; 
-          clearBuzzer();
-        } else { // Timer is off => set time silently.
-          countDown = false;
-          buzzerStop();
-          countDownTime = countdownAfterRotate(currentCountDown, rotaryMove);
-        }
-      }
-      rotaryMove = 0;
-      break;
-    case STATE_DEMO: // State 9
-      if(menuReleased == true) {state = STATE_CLOCK; }  // if displaying the demo, menu button pressed then the clock will display and restore to the mode before demo started
-      break;
+  if (fx.setTime) {
+    RTC.adjust(DateTime(fx.newTime.year, fx.newTime.month, fx.newTime.day, fx.newTime.hour, fx.newTime.minute, fx.newTime.second));
   }
-  if (state == STATE_SET_CLOCK_HR || state == STATE_SET_CLOCK_MIN || state == STATE_SET_CLOCK_SEC) printDateTime();
-  if (menuReleased || rotaryMove !=0) {countTime = false;}
-  if (menuReleased) {menuPressSeen = false;}
-  Serial.print(F("Mode is "));  Serial.println(clockMode);
-  Serial.print(F("State is "));  Serial.println((int)state);
+  if (fx.clearBuzzer) clearBuzzer();
+  if (fx.stopBuzzer) buzzerStop();
+  if (fx.resetSecTimer) newSecTime = millis();
+  if (fx.resetJ) j = 0;
+  if (fx.startDemo) demo_mode = 1;
+  if (fx.saveClockMode) RTC.writenvram(CLOCK_MODE_ADDR, clockMode);
+  if (fx.saveAlarmSet) RTC.writenvram(ALARM_SET_ADDR, alarmSet);
+  if (fx.saveAlarmMode) RTC.writenvram(ALARM_MODE_ADDR, alarmMode);
+  if (fx.saveAlarmHour) RTC.writenvram(ALARM_HR_ADDR, alarmHour);
+  if (fx.saveAlarmMin) RTC.writenvram(ALARM_MIN_ADDR, alarmMin);
+  if (fx.saveLedOffset) RTC.writenvram(LED_OFFSET_ADDR, led_offset);
+  if (fx.printDateTime) printDateTime();
+  if (fx.waitAfterAlarmCancel) delay(300);  // let time for the button to be released
+}
+
+void buttonCheck(Bounce& button, DateTime now) {
+  MenuInput in = {};
+  in.pressed = !button.read();
+  in.heldMs = in.pressed ? button.currentDuration() : 0;
+  in.released = button.rose();
+  in.clockModeCount = CLOCK_MODE_MAX;
+  in.now.year = now.year();
+  in.now.month = now.month();
+  in.now.day = now.day();
+  in.now.hour = now.hour();
+  in.now.minute = now.minute();
+  in.now.second = now.second();
+  in.now.unixtime = now.unixtime();
+
+  State stateBefore = state;
+  MenuModel model = loadMenuModel();
+  MenuEffects fx = menuStep(model, in);
+  storeMenuModel(model);
+  applyMenuEffects(fx);
+
+  if (stateBefore == STATE_ALARM && !fx.waitAfterAlarmCancel) {
+    Serial.print(F("alarmSet is ")); Serial.println(alarmSet);
+    Serial.print(F("alarmMode is ")); Serial.println(alarmMode);
+  }
+  if (!fx.waitAfterAlarmCancel) {
+    Serial.print(F("Mode is "));  Serial.println(clockMode);
+    Serial.print(F("State is "));  Serial.println((int)state);
+  }
 }
 
 void setAlarmDisplay() {
