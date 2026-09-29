@@ -60,3 +60,10 @@ uint8_t alarmFadeBrightness(uint32_t elapsedMs);
 // +HALF_PI or -HALF_PI and selects the swing direction of this second. The pendulum hangs at the bottom of
 // the clock face (position 30) and swings 3 LEDs to each side.
 int pendulumLed(float fracOfSec, float swing, int ledOffset);
+
+// LED position of the hour hand on the clock face: 5 LEDs per hour, moving on with the minutes.
+// Can be NUM_LEDS just before the top of the hour; the strip wraps it.
+int hourHandPosition(uint8_t hour, uint8_t minute);
+
+// Seconds left on a timer of `lengthSec` started at unix time `startedAt`. Zero or negative once it has run out.
+long countdownRemaining(long lengthSec, long startedAt, uint32_t nowUnix);

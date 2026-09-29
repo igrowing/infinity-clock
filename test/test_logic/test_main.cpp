@@ -155,8 +155,27 @@ void test_pendulum_is_always_a_valid_led() {
   }
 }
 
+// ---- hourHandPosition / countdownRemaining ----
+void test_hour_hand_on_the_hour()        { TEST_ASSERT_EQUAL(15, hourHandPosition(3, 0)); TEST_ASSERT_EQUAL(0, hourHandPosition(12, 0)); }
+void test_hour_hand_uses_12_hour_dial()  { TEST_ASSERT_EQUAL(hourHandPosition(3, 0), hourHandPosition(15, 0)); }
+void test_hour_hand_moves_with_minutes() { TEST_ASSERT_EQUAL(17, hourHandPosition(3, 24)); TEST_ASSERT_EQUAL(18, hourHandPosition(3, 30)); }
+void test_hour_hand_just_before_the_next_hour() { TEST_ASSERT_EQUAL(60, hourHandPosition(11, 59)); }
+void test_countdown_remaining_counts_down()     { TEST_ASSERT_EQUAL(200, countdownRemaining(300, 1000, 1100)); }
+void test_countdown_remaining_at_the_start()    { TEST_ASSERT_EQUAL(300, countdownRemaining(300, 1000, 1000)); }
+void test_countdown_remaining_is_not_positive_when_done() {
+  TEST_ASSERT_EQUAL(0, countdownRemaining(300, 1000, 1300));
+  TEST_ASSERT_TRUE(countdownRemaining(300, 1000, 1500) < 0);
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_hour_hand_on_the_hour);
+  RUN_TEST(test_hour_hand_uses_12_hour_dial);
+  RUN_TEST(test_hour_hand_moves_with_minutes);
+  RUN_TEST(test_hour_hand_just_before_the_next_hour);
+  RUN_TEST(test_countdown_remaining_counts_down);
+  RUN_TEST(test_countdown_remaining_at_the_start);
+  RUN_TEST(test_countdown_remaining_is_not_positive_when_done);
   RUN_TEST(test_pendulum_is_at_the_bottom_in_the_middle_of_a_swing);
   RUN_TEST(test_pendulum_swings_equally_to_both_sides);
   RUN_TEST(test_pendulum_moves_clockwise_first_then_back);

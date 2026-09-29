@@ -7,6 +7,12 @@ static void returnToClock(MenuModel& m, MenuEffects& fx) {
   m.countDown = false;
 }
 
+static void resetTimer(MenuModel& m) {
+  m.countDown = false;
+  m.countDownTime = 0;
+  m.currentCountDown = 0;
+}
+
 static void requestTime(const NowInfo& now, MenuEffects& fx, uint8_t hour, uint8_t minute, uint8_t second) {
   fx.setTime = true;
   fx.newTime = now;
@@ -87,9 +93,7 @@ static void stepCountdown(MenuModel& m, const MenuInput& in, MenuEffects& fx) {
   if (in.released) {
     if (m.menuTimePressed <= HOLD_TIME_MS) {
       if (m.countDown) {  // Timer on + quick click ==> stop countdown.
-        m.countDown = false;
-        m.countDownTime = 0;
-        m.currentCountDown = 0;
+        resetTimer(m);
         returnToClock(m, fx);
       } else if (m.countDownTime > 0) {  // Timer off, there is time + quick click ==> start countdown.
         m.countDown = true;
@@ -100,15 +104,12 @@ static void stepCountdown(MenuModel& m, const MenuInput& in, MenuEffects& fx) {
         fx.resetJ = true;
       }
     } else {  // Long click ==> reset the timer.
-      m.countDown = false;
-      m.countDownTime = 0;
-      m.currentCountDown = 0;
+      resetTimer(m);
       fx.resetJ = true;
     }
   } else if (m.rotaryMove != 0) {
     if (m.countDown && m.currentCountDown <= 0) {  // Time is gone + rotated ==> stop countdown and buzzer.
-      m.countDownTime = 0;
-      m.currentCountDown = 0;
+      resetTimer(m);
       returnToClock(m, fx);
     } else {  // Set the timer silently.
       m.countDown = false;

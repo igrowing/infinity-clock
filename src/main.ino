@@ -27,6 +27,7 @@ RTC_DS1307 RTC;     // Establishes the chipset of the Real Time Clock
 #define DEMO_TIME_S 12 // seconds
 #define ROTARY_SET_TIME_MS 300
 #define TIME_INTERVAL 5
+#define BLINK_PERIOD_MS 300  // Flashing while a value is being set: half of it off, half on
 
 CRGB leds[NUM_LEDS];  // Setting up the LED strip
 const CRGB DEMO_COLORS[9] = {CRGB::Black, CRGB::Red, CRGB::Red, CRGB::Green, CRGB::Green, CRGB::Blue, CRGB::Blue, CRGB::White, CRGB::White};
@@ -59,7 +60,6 @@ int rotary1Pos = 0;
 int subSeconds; // 60th's of a second
 int brightness = 0;
 long newSecTime; // Variable to record when a new second starts, allowing to create milli seconds
-long flashTime;
 long breathCycleTime;
 int cyclesPerSec;
 float cyclesPerSecFloat;
@@ -91,7 +91,6 @@ int countDownSec;
 int countDownFlash;
 int demo_mode = 0;
 volatile int j = 0;  // LED position in fast transition effects
-long currentMillis;
 long previousMillis = 0;
 volatile uint8_t star = 0;
 volatile float starBlinks;
@@ -125,10 +124,66 @@ CRGB& led(int i) { return leds[(i + led_offset) % NUM_LEDS]; }
 
 CRGB grey(uint8_t v) { return CRGB(v, v, v); }
 
+void fillAll(const CRGB& color) { fill_solid(leds, NUM_LEDS, color); }
+
+void clearLEDs() { fillAll(CRGB::Black); }
+
+void printValue(const __FlashStringHelper* label, long value) {
+  Serial.print(label);
+  Serial.println(value);
+}
+
+// True in the "off" half of the flashing period. Used to flash the value being set.
+bool blinkPhaseOff() { return millis() % BLINK_PERIOD_MS >= BLINK_PERIOD_MS / 2; }
+
+// True (once) whenever more than `ms` passed since the last time it was true. Paces the animations.
+bool intervalElapsed(long ms) {
+  long now = millis();
+  if (now - previousMillis <= ms) return false;
+  previousMillis = now;
+  return true;
+}
+
+// True when a new second has just started. Also measures the length of the previous second (it is not exactly 1000 ms).
+bool startOfNewSecond(DateTime now) {
+  if (now.second() == old.second()) return false;
+  old = now;
+  cyclesPerSec = millis() - newSecTime;
+  cyclesPerSecFloat = (float) cyclesPerSec;
+  newSecTime = millis();
+  return true;
+}
+
+// How far we are into the current second: 0.0 .. 1.0
+float secondProgress() { return (millis() - newSecTime) / cyclesPerSecFloat; }
+
+// `count` blue LEDs starting at the top of the clock face.
+void drawBlueRun(int count, uint8_t blue) {
+  for (int i = 0; i < count; i++) led(i + 1).b = blue;
+}
+
+// Paint the first j LEDs (`filling`) or all the LEDs from j on, then advance j on schedule; next demo step at the end.
+void colorWipe(const CRGB& color, bool filling) {
+  if (filling) {
+    for (int i = 0; i < j; i++) led(i + 1) = color;
+  } else {
+    for (int i = j; i < NUM_LEDS; i++) led(i + 1) = color;
+  }
+  if (intervalElapsed(TIME_INTERVAL)) j++;
+  if (j == NUM_LEDS) {j = 0; demo_mode++;}
+}
+
+void drawMinuteAndSecond(DateTime now) {
+  led(now.minute()).g = 255;
+  led(now.second()).b = 255;
+}
+
 // Hour hand of the afternoon: red centre LED with dim neighbours.
-void drawHourSpread(int pos) {
+// `solid`: the centre LED is pure red instead of just having its red channel raised.
+void drawHourSpread(int pos, bool solid = false) {
   led(pos - 1).r = 50;
-  led(pos).r = 255;
+  if (solid) led(pos) = CRGB::Red;
+  else led(pos).r = 255;
   led(pos + 1).r = 50;
 }
 
@@ -187,12 +242,12 @@ void setup() {
   state = STATE_CLOCK;
 
   // Print all the saved NVRAM data to Serial
-  Serial.print(F("Mode is ")); Serial.println(clockMode);
-  Serial.print(F("Alarm Hour is ")); Serial.println(alarmHour);
-  Serial.print(F("Alarm Min is ")); Serial.println(alarmMin);
-  Serial.print(F("Alarm is set ")); Serial.println(alarmSet);
-  Serial.print(F("Alarm Mode is ")); Serial.println(alarmMode);
-  Serial.print(F("LED offset is ")); Serial.println(led_offset);
+  printValue(F("Mode is "), clockMode);
+  printValue(F("Alarm Hour is "), alarmHour);
+  printValue(F("Alarm Min is "), alarmMin);
+  printValue(F("Alarm is set "), alarmSet);
+  printValue(F("Alarm Mode is "), alarmMode);
+  printValue(F("LED offset is "), led_offset);
   printDateTime();
 
   pinMode(PIN_BUZZER, OUTPUT);
@@ -220,7 +275,7 @@ void loop() {
   if (menuButton == true || rotaryMove != 0 || countTime == true) {buttonCheck(menuBouncer,now);}
 
   // clear LED array
-  fill_solid(leds, NUM_LEDS, CRGB::Black);  // memset(leds, ...) is ambiguous with FastLED 3.10+
+  clearLEDs();  // Not memset(leds, ...): it is ambiguous with FastLED 3.10+
   
   // Check alarm and trigger if the time matches
   if (alarmSet == true && alarmDay != now.day()) { // The alarmDay statement ensures it is a newly set alarm or repeat from previous day, not within the minute of an alarm cancel.
@@ -229,7 +284,7 @@ void loop() {
   }
  // Check the Countdown Timer
   if (countDown == true) {
-    currentCountDown = countDownTime + startCountDown - now.unixtime();
+    currentCountDown = countdownRemaining(countDownTime, startCountDown, now.unixtime());
     if ( currentCountDown <= 0) state = STATE_COUNTDOWN;
   } 
   // Set the time LED's
@@ -251,12 +306,12 @@ void printDateTime() {
     now = RTC.now();
     Serial.println(F("Fixed date and time."));
   }      
-  Serial.print(F("Hour time is... ")); Serial.println(now.hour());
-  Serial.print(F("Min time is... ")); Serial.println(now.minute());
-  Serial.print(F("Sec time is... ")); Serial.println(now.second());
-  Serial.print(F("Year is... ")); Serial.println(now.year());
-  Serial.print(F("Month is... ")); Serial.println(now.month());
-  Serial.print(F("Day is... ")); Serial.println(now.day());
+  printValue(F("Hour time is... "), now.hour());
+  printValue(F("Min time is... "), now.minute());
+  printValue(F("Sec time is... "), now.second());
+  printValue(F("Year is... "), now.year());
+  printValue(F("Month is... "), now.month());
+  printValue(F("Day is... "), now.day());
 }
 
 // Copy the live globals into the model the menu state machine works on ...
@@ -351,12 +406,12 @@ void buttonCheck(Bounce& button, DateTime now) {
   applyMenuEffects(fx);
 
   if (stateBefore == STATE_ALARM && !fx.waitAfterAlarmCancel) {
-    Serial.print(F("alarmSet is ")); Serial.println(alarmSet);
-    Serial.print(F("alarmMode is ")); Serial.println(alarmMode);
+    printValue(F("alarmSet is "), alarmSet);
+    printValue(F("alarmMode is "), alarmMode);
   }
   if (!fx.waitAfterAlarmCancel) {
-    Serial.print(F("Mode is "));  Serial.println(clockMode);
-    Serial.print(F("State is "));  Serial.println((int)state);
+    printValue(F("Mode is "), clockMode);
+    printValue(F("State is "), (int)state);
   }
 }
 
@@ -366,21 +421,21 @@ void setAlarmDisplay() {
   for (int i = 0; i < NUM_LEDS; i += 5) led(i) = tick;
   drawHour24(alarmHour);
   led(alarmMin).g = 100;
-  flashTime = millis();
-  // Turn off hourly ticks periodically to show flashing.
-  if (state == STATE_SET_ALARM_HR && flashTime%300 >= 150) hideHour(alarmHour);
-  if (state == STATE_SET_ALARM_MIN && flashTime%300 >= 150) led(alarmMin).g = 0;
+  // Turn off the value being set periodically to show flashing.
+  bool off = blinkPhaseOff();
+  if (state == STATE_SET_ALARM_HR && off) hideHour(alarmHour);
+  if (state == STATE_SET_ALARM_MIN && off) led(alarmMin).g = 0;
   led(alarmMode).b = 255;
 }
 
 void setClockDisplay(DateTime now) {
   fill_ticks(10);
   drawHour24(now.hour());
-  flashTime = millis();
-  if (state == STATE_SET_CLOCK_HR && flashTime%300 >= 150) hideHour(now.hour());
-  if (state == STATE_SET_CLOCK_MIN && flashTime%300 >= 150) led(now.minute()).g = 0;
+  bool off = blinkPhaseOff();
+  if (state == STATE_SET_CLOCK_HR && off) hideHour(now.hour());
+  if (state == STATE_SET_CLOCK_MIN && off) led(now.minute()).g = 0;
   else led(now.minute()).g = 255;
-  if (state == STATE_SET_CLOCK_SEC && flashTime%300 >= 150) led(now.second()).b = 0;
+  if (state == STATE_SET_CLOCK_SEC && off) led(now.second()).b = 0;
   else led(now.second()).b = 255;
 }
 
@@ -452,7 +507,7 @@ void alarmDisplay() {
 
 // Dim white on all LEDs: avoid overcurrent.
 void alarmSolid() {
-  fill_solid(leds, NUM_LEDS, grey(20));
+  fillAll(grey(20));
 }
 
 // White grows from both ends of the ring, then fills everything.
@@ -462,7 +517,7 @@ void alarmRamp() {
   if (pos >= 0 && pos <= (NUM_LEDS/2-1)) {
     for (int i = 0; i < pos; i++) led(i) = grey(5);
   } else {
-    fill_solid(leds, NUM_LEDS, grey(5));
+    fillAll(grey(5));
   }
   if (reversePos <= (NUM_LEDS-1) && reversePos >= (NUM_LEDS/2+1)) {
     for (int i = NUM_LEDS-1; i > reversePos; i--) led(i) = grey(5);
@@ -471,94 +526,67 @@ void alarmRamp() {
 
 // Brightness fades up over FADE_TIME_MS.
 void alarmFade() {
-  fill_solid(leds, NUM_LEDS, grey(alarmFadeBrightness(millis() - alarmTrigTime)));
+  fillAll(grey(alarmFadeBrightness(millis() - alarmTrigTime)));
 }
 
 void countDownDisplay(DateTime now) {
-  flashTime = millis();
   if (countDown == true) {
     // Counting down
-    currentCountDown = countDownTime + startCountDown - now.unixtime();
+    currentCountDown = countdownRemaining(countDownTime, startCountDown, now.unixtime());
     if (currentCountDown > 0) {
       // Time is not gone yet, decrement lights
       countDownMin = currentCountDown / 60;
       countDownSec = currentCountDown%60 * 2; // Range 0-120 to create brightness less than 240
-      for (int i = 0; i < countDownMin; i++) {led(i+1).b = 240;} // Set a blue LED for each complete minute that is remaining 
-      led(countDownMin+1).b = countDownSec; // Display the remaining secconds of the current minute as its brightness      
+      drawBlueRun(countDownMin, 240); // A blue LED for each complete minute that is remaining
+      led(countDownMin+1).b = countDownSec; // Display the remaining secconds of the current minute as its brightness
     } else {
       // Time is gone, flash and beep.
       countDownFlash = now.unixtime()%2;
       runBuzzer(TIMER);
-      if (countDownFlash == 0) {
-        clearLEDs();
-      } else {
-        for (int i = 0; i < NUM_LEDS; i++) { // Set the background as all blue
-          leds[i] = CRGB::Blue;
-        }
-      }
+      if (countDownFlash == 0) clearLEDs();
+      else fillAll(CRGB::Blue);  // Set the background as all blue
     }
   } else {
     // Setting mode
     currentCountDown = countDownTime;
     if (countDownTime == 0) {
-      currentMillis = millis();
       clearLEDs();
       switch (demo_mode) {
         case 0:
-          for (int i = 0; i < j; i++) {led(i+1).b = 20;}
-          if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
+          drawBlueRun(j, 20);
+          if (intervalElapsed(TIME_INTERVAL)) j++;
           if (j == NUM_LEDS) {demo_mode = 1;}
           break;
         case 1:
-          for (int i = 0; i < j; i++) {led(i+1).b = 20;}
-          if (currentMillis - previousMillis > TIME_INTERVAL) {j--; previousMillis = currentMillis;}
+          drawBlueRun(j, 20);
+          if (intervalElapsed(TIME_INTERVAL)) j--;
           if (j < 0) {demo_mode = 0;}
           break;
         default:
           demo_mode = 0;
       }
-    } else if (countDownTime > 0 && flashTime%300 >= 150) {
+    } else if (countDownTime > 0 && blinkPhaseOff()) {
       countDownMin = currentCountDown / 60;
-      for (int i = 0; i < countDownMin; i++) {led(i+1).b = 255;} // Set a blue LED for each complete minute that is remaining
+      drawBlueRun(countDownMin, 255); // A blue LED for each complete minute that is remaining
     }
   }
 }
 
 void runDemo(DateTime now) {
   currentDemoTime = now.unixtime();
-  currentMillis = millis();
   clearLEDs();
   switch (demo_mode) {
     case 0:
       timeDisplay(now);
       if (currentDemoTime - previousDemoTime > DEMO_TIME_S) {previousDemoTime = currentDemoTime;}
       break;
-    case 1:
-    case 3:
-    case 5:
-    case 7:
-      for (int i = 0; i < j; i++) {led(i+1) = DEMO_COLORS[demo_mode];}
-      if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
-      if (j == NUM_LEDS) {j = 0; demo_mode++;}
-      break;
-    case 2:
-    case 4:
-    case 6:
-    case 8:
-      for (int i = j; i < NUM_LEDS; i++) {led(i+1) = DEMO_COLORS[demo_mode];}
-      if (currentMillis - previousMillis > TIME_INTERVAL) {j++; previousMillis = currentMillis;}
-      if (j == NUM_LEDS) {j = 0; demo_mode++;}
+    case 1: case 2: case 3: case 4: case 5: case 6: case 7: case 8:
+      colorWipe(DEMO_COLORS[demo_mode], demo_mode % 2 == 1);  // Odd steps paint the colour in, even steps wipe it out
       break;
     case 9:
       rainbow();
-      if (currentMillis - previousMillis > TIME_INTERVAL * 5000) {previousMillis = currentMillis; demo_mode = 1; j = 0; }
+      if (intervalElapsed(TIME_INTERVAL * 5000)) {demo_mode = 1; j = 0;}
       break;
-  }
-}
-
-void clearLEDs() {    
-  for (int i = 0; i < NUM_LEDS; i++) { // Set all the LEDs to off
-    leds[i] = CRGB::Black;
   }
 }
 
@@ -577,32 +605,22 @@ void timeDisplay(DateTime now) {
 void minimalClock(DateTime now) {
   unsigned char hourPos = (now.hour()%12)*5;
   led(hourPos).r = 255;
-  led(now.minute()).g = 255;
-  led(now.second()).b = 255;
+  drawMinuteAndSecond(now);
 }
 
 // # Red LEDs for hours, 1 LED per min and sec.
 void basicClock(DateTime now) {
-  unsigned char hourPos = (now.hour()%12)*5 + (now.minute()+6)/12;
-  led(hourPos-1).r = 50;
-  led(hourPos) = CRGB::Red;
-  led(hourPos+1).r = 50;
+  drawHourSpread(hourHandPosition(now.hour(), now.minute()), true);
   // Mix colors if the same LED is chosen
-  led(now.minute()).g = 255;
-  led(now.second()).b = 255;
+  drawMinuteAndSecond(now);
 }
 
 // Second hand flowing from sec-to-sec + Basic clock
 void smoothSecond(DateTime now) {
   basicClock(now);
-  if (now.second()!=old.second()) {
-    old = now;
-    cyclesPerSec = millis() - newSecTime;
-    cyclesPerSecFloat = (float) cyclesPerSec;
-    newSecTime = millis();      
-  } 
+  startOfNewSecond(now);
   // set hour, min & sec LEDs
-  fracOfSec = (millis() - newSecTime)/cyclesPerSecFloat;  // This divides by 733, but should be 1000 and not sure why???
+  fracOfSec = secondProgress();  // This divides by 733, but should be 1000 and not sure why???
   if (subSeconds < cyclesPerSec) { brightness = 50.0*(1.0+sin((PI*fracOfSec)-HALF_PI)); }
   led(now.second()).b = brightness;
   led(now.second()-1).b = 100 - brightness;
@@ -616,49 +634,34 @@ void outlineClock(DateTime now) {
 
 void starryNightClock(DateTime now) {
   basicClock(now);
-  if (now.second()!=old.second()) {
+  if (startOfNewSecond(now)) {
     star = random8(NUM_LEDS);           // Choose star
     starBlinks = (float)(random8(1, 4) * 8);   // Choose times of sparkles
-    old = now;
-  } 
+  }
   float m = (float) (millis() % 2000) / 3000.0;
   brightness = (2.0-m)*15.0*(1.0+sin(m*starBlinks-0.7));
   brightness = min(brightness, 100);  // cut numbers > 100
   brightness = (brightness < 15)?0:brightness;  // cut numbers < 15
-  leds[star].r = brightness;
-  leds[star].g = brightness;
-  leds[star].b = brightness;
+  leds[star] = grey(brightness);
 }
 
 // Running white light over clock round. Full round in 1 second.
 void minimalMilliSec(DateTime now) {
-  if (now.second()!=old.second()) {
-    old = now;
-    cyclesPerSec = (millis() - newSecTime);
-    newSecTime = millis();
-  } 
+  startOfNewSecond(now);
   // set hour, min & sec LEDs
-  unsigned char hourPos = (now.hour()%12)*5 + (now.minute()+6)/12;
   subSeconds = (((millis() - newSecTime)*60)/cyclesPerSec)%60;  // This divides by 733, but should be 1000 and not sure why???
   // Millisec lights are set first, so hour/min/sec lights override and don't flicker as millisec passes
   led(subSeconds) = grey(50);
   // The colours are set last, so if on same LED mixed colours are created
-  drawHourSpread(hourPos);
-  led(now.minute()).g = 255;
-  led(now.second()).b = 255;
+  drawHourSpread(hourHandPosition(now.hour(), now.minute()));
+  drawMinuteAndSecond(now);
 }
 
 // Pendulum will be at the bottom and left for one second and right for one second
 void simplePendulum(DateTime now) {
   basicClock(now);
-  if (now.second()!=old.second()) {
-    old = now;
-    cyclesPerSec = millis() - newSecTime;
-    cyclesPerSecFloat = (float) cyclesPerSec;
-    newSecTime = millis();
-    swingBack = -swingBack;
-  } 
-  fracOfSec = (millis() - newSecTime)/cyclesPerSecFloat;  // This divides by 733, but should be 1000 and not sure why???
+  if (startOfNewSecond(now)) swingBack = -swingBack;
+  fracOfSec = secondProgress();  // This divides by 733, but should be 1000 and not sure why???
   if (subSeconds < cyclesPerSec) {
     pendulumPos = pendulumLed(fracOfSec, swingBack, led_offset);
   }

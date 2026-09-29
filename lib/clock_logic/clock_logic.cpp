@@ -47,3 +47,11 @@ int pendulumLed(float fracOfSec, float swing, int ledOffset) {
   int position = NUM_LEDS/2 - offset;  // On the clock face, 30 is the bottom
   return (position + ledOffset) % NUM_LEDS;
 }
+
+int hourHandPosition(uint8_t hour, uint8_t minute) {
+  return (hour % 12) * 5 + (minute + 6) / 12;
+}
+
+long countdownRemaining(long lengthSec, long startedAt, uint32_t nowUnix) {
+  return lengthSec + startedAt - (long)nowUnix;
+}
