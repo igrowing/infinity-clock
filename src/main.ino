@@ -25,7 +25,6 @@ RTC_DS1307 RTC;     // Establishes the chipset of the Real Time Clock
 #define NUM_LEDS    60    // Number of LEDs in strip
 #define LED_OFFSET_L 52    // Adjust by LED position/shift in the circle
 #define LED_OFFSET_R 37    // Adjust by LED position/shift in the circle
-#define HOLD_TIME_MS 1500
 #define DEMO_TIME_S 12 // seconds
 #define ROTARY_SET_TIME_MS 300
 #define TIME_INTERVAL 5
@@ -87,16 +86,6 @@ void (*buzzerDone)();
 volatile int8_t led_offset;  // Allows rotate clock by 90 segrees left/right 
 
 volatile int state = 0; // Variable of the state of the clock, with the following defined states 
-#define STATE_CLOCK 0
-#define STATE_ALARM 1
-#define STATE_SET_ALARM_HR 2
-#define STATE_SET_ALARM_MIN 3
-#define STATE_SET_CLOCK_HR 4
-#define STATE_SET_CLOCK_MIN 5
-#define STATE_SET_CLOCK_SEC 6
-#define STATE_SET_CLOCK_UP 7
-#define STATE_COUNTDOWN 8
-#define STATE_DEMO 9
 volatile uint8_t clockMode; // Variable of the display mode of the clock
 #define CLOCK_MODE_MAX 8 // Change this when new modes are added. This is so selecting modes can go back beyond.
 volatile uint8_t alarmMode; // Variable of the alarm display mode
@@ -106,6 +95,7 @@ Bounce menuBouncer = Bounce(PIN_MENU,30); // Instantiate a Bounce object with a 
 boolean menuButton = false; 
 boolean menuPressed = false;
 boolean menuReleased = false;
+boolean menuPressSeen = false;  // A press was observed since the last release
 volatile int16_t rotaryMove = 0;
 volatile boolean countTime = false;
 long menuTimePressed;
@@ -121,7 +111,8 @@ uint8_t color_intensity [] = {100, 95, 90, 85, 80, 75, 70, 65, 60, 55, 50, 45, 4
 
 void setup() {
   // Set up all pins
-  pinMode(PIN_MENU, INPUT_PULLUP);     // Uses the internal 20k pull up resistor. Pre Arduino_v.1.0.1 need to be "digitalWrite(PIN_MENU,HIGH);pinMode(PIN_MENU,INPUT);"
+  // Attach after enabling the pull-up: the global Bounce object was constructed before this and latched a floating pin level.
+  menuBouncer.attach(PIN_MENU, INPUT_PULLUP);  // Uses the internal 20k pull up resistor. Pre Arduino_v.1.0.1 need to be "digitalWrite(PIN_MENU,HIGH);pinMode(PIN_MENU,INPUT);"
     
   // Start LEDs
   LEDS.addLeds<WS2812B, PIN_LEDS, GRB>(leds, NUM_LEDS); // Structure of the LED data. I have changed to from rgb to grb, as using an alternative LED strip. Test & change these if you're getting different colours. 
@@ -237,6 +228,7 @@ void printDateTime() {
 void buttonCheck(Bounce menuBouncer, DateTime now) {
   countTime = ! menuBouncer.read();
   if (countTime) { // otherwise will menuBouncer.duration will 
+    menuPressSeen = true;
     menuTimePressed = menuBouncer.duration();
     if (menuTimePressed >= (HOLD_TIME_MS - 100) && menuTimePressed <= HOLD_TIME_MS) { // long click
       // blink display while button is pressed to indicate "entered adjust mode"
@@ -262,10 +254,8 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
         RTC.writenvram(CLOCK_MODE_ADDR, clockMode);
         rotaryMove = 0;
       } else if(menuReleased == true) {
-        if (menuTimePressed <= HOLD_TIME_MS) {
-          state = STATE_ALARM; 
-          newSecTime = millis();
-        } else state = STATE_SET_CLOCK_HR;
+        state = stateOnMenuRelease(menuPressSeen, menuTimePressed);
+        if (state == STATE_ALARM) newSecTime = millis();
       }
       break;
     case STATE_ALARM: // State 1
@@ -376,6 +366,7 @@ void buttonCheck(Bounce menuBouncer, DateTime now) {
   }
   if (state == STATE_SET_CLOCK_HR || state == STATE_SET_CLOCK_MIN || state == STATE_SET_CLOCK_SEC) printDateTime();
   if (menuReleased || rotaryMove !=0) {countTime = false;}
+  if (menuReleased) {menuPressSeen = false;}
   Serial.print("Mode is ");  Serial.println(clockMode);
   Serial.print("State is ");  Serial.println(state);
 }

@@ -35,8 +35,24 @@ void test_ramp_after_40_seconds_value()           { TEST_ASSERT_EQUAL(133, (int)
 void test_ramp_after_2_minutes_keeps_growing()    { TEST_ASSERT_EQUAL(400, (int)alarmRampPosition(120000)); }
 void test_ramp_saturates_instead_of_wrapping()    { TEST_ASSERT_EQUAL(32767, (int)alarmRampPosition(4000000000u)); }
 
+// ---- stateOnMenuRelease ----
+void test_release_after_short_click_opens_alarm() { TEST_ASSERT_EQUAL(STATE_ALARM, stateOnMenuRelease(true, 200)); }
+void test_release_after_hold_limit_opens_alarm()  { TEST_ASSERT_EQUAL(STATE_ALARM, stateOnMenuRelease(true, HOLD_TIME_MS)); }
+void test_release_after_long_click_opens_clock_setting() { TEST_ASSERT_EQUAL(STATE_SET_CLOCK_HR, stateOnMenuRelease(true, HOLD_TIME_MS + 1)); }
+// BUG 2 (spurious alarm mode after boot). The global Bounce object is attached to the button pin BEFORE
+// setup() enables INPUT_PULLUP, so a floating pin can be latched as LOW. When the pull-up kicks in,
+// the first Bounce::update() reports a "rose" edge. No press ever happened (pressedMs is still its
+// initial 0), yet the release was treated as a short click and the clock jumped to alarm mode.
+void test_release_without_press_at_boot_stays_in_clock() {
+  TEST_ASSERT_EQUAL(STATE_CLOCK, stateOnMenuRelease(false, 0));
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_release_after_short_click_opens_alarm);
+  RUN_TEST(test_release_after_hold_limit_opens_alarm);
+  RUN_TEST(test_release_after_long_click_opens_clock_setting);
+  RUN_TEST(test_release_without_press_at_boot_stays_in_clock);
   RUN_TEST(test_wrap_forward);
   RUN_TEST(test_wrap_forward_at_end);
   RUN_TEST(test_wrap_backward);
