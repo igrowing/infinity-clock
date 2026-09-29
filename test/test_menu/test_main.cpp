@@ -91,7 +91,7 @@ void test_alarm_mode_wraps() {
 void test_alarm_short_click_opens_timer() {
   MenuModel m = in_state(STATE_ALARM);
   MenuEffects fx = click(m, 200);
-  TEST_ASSERT_EQUAL(STATE_COUNTDOWN, m.state); TEST_ASSERT_TRUE(fx.resetJ);
+  TEST_ASSERT_EQUAL(STATE_COUNTDOWN, m.state); TEST_ASSERT_TRUE(fx.resetSweep);
 }
 void test_alarm_long_click_opens_alarm_hour_setting() {
   MenuModel m = in_state(STATE_ALARM);
@@ -181,13 +181,13 @@ void test_timer_short_click_starts_countdown() {
 void test_timer_short_click_without_time_starts_demo() {
   MenuModel m = in_state(STATE_COUNTDOWN);
   MenuEffects fx = click(m, 200);
-  TEST_ASSERT_EQUAL(STATE_DEMO, m.state); TEST_ASSERT_TRUE(fx.startDemo); TEST_ASSERT_TRUE(fx.resetJ);
+  TEST_ASSERT_EQUAL(STATE_DEMO, m.state); TEST_ASSERT_TRUE(fx.startDemo); TEST_ASSERT_TRUE(fx.resetSweep);
 }
 void test_timer_long_click_resets_timer() {
   MenuModel m = in_state(STATE_COUNTDOWN); m.countDown = true; m.countDownTime = 300; m.currentCountDown = 120;
   MenuEffects fx = click(m, HOLD_TIME_MS + 100);
   TEST_ASSERT_FALSE(m.countDown); TEST_ASSERT_EQUAL(0, m.countDownTime); TEST_ASSERT_EQUAL(0, m.currentCountDown);
-  TEST_ASSERT_TRUE(fx.resetJ); TEST_ASSERT_EQUAL(STATE_COUNTDOWN, m.state);
+  TEST_ASSERT_TRUE(fx.resetSweep); TEST_ASSERT_EQUAL(STATE_COUNTDOWN, m.state);
 }
 void test_demo_click_returns_to_clock() {
   MenuModel m = in_state(STATE_DEMO);
@@ -313,8 +313,69 @@ void test_display_blinks_only_just_before_the_hold_limit() {
   in.heldMs = HOLD_TIME_MS + 1;   TEST_ASSERT_FALSE(menuStep(m, in).blinkDisplay);
 }
 
+// ================= alarmPhase =================
+static MenuModel armed(uint8_t hour, uint8_t minute) {
+  MenuModel m; m.alarmSet = 1; m.alarmHour = hour; m.alarmMin = minute; m.alarmMode = 1; return m;
+}
+void test_alarm_is_due_at_the_alarm_time() {
+  TEST_ASSERT_EQUAL(ALARM_DUE, alarmPhase(armed(7, 30), at(7, 30, 0)));
+  TEST_ASSERT_EQUAL(ALARM_DUE, alarmPhase(armed(7, 30), at(7, 30, 59)));
+}
+void test_alarm_is_idle_before_and_after_the_alarm_minute() {
+  TEST_ASSERT_EQUAL(ALARM_IDLE, alarmPhase(armed(7, 30), at(7, 29, 59)));
+  TEST_ASSERT_EQUAL(ALARM_IDLE, alarmPhase(armed(7, 30), at(7, 31, 0)));
+  TEST_ASSERT_EQUAL(ALARM_IDLE, alarmPhase(armed(7, 30), at(19, 30, 0)));
+}
+void test_alarm_is_idle_when_switched_off() {
+  MenuModel m = armed(7, 30); m.alarmSet = 0;
+  TEST_ASSERT_EQUAL(ALARM_IDLE, alarmPhase(m, at(7, 30, 0)));
+}
+void test_alarm_does_not_start_while_its_time_is_being_set() {
+  MenuModel m = armed(7, 30);
+  m.state = STATE_SET_ALARM_HR;  TEST_ASSERT_EQUAL(ALARM_IDLE, alarmPhase(m, at(7, 30, 0)));
+  m.state = STATE_SET_ALARM_MIN; TEST_ASSERT_EQUAL(ALARM_IDLE, alarmPhase(m, at(7, 30, 0)));
+}
+void test_alarm_starts_from_any_other_screen() {
+  MenuModel m = armed(7, 30);
+  m.state = STATE_COUNTDOWN; TEST_ASSERT_EQUAL(ALARM_DUE, alarmPhase(m, at(7, 30, 0)));
+  m.state = STATE_ALARM;     TEST_ASSERT_EQUAL(ALARM_DUE, alarmPhase(m, at(7, 30, 0)));
+}
+void test_alarm_keeps_ringing_until_stopped() {
+  MenuModel m = armed(7, 30); m.alarmTrig = true;
+  TEST_ASSERT_EQUAL(ALARM_RINGING, alarmPhase(m, at(7, 30, 5)));
+  TEST_ASSERT_EQUAL(ALARM_RINGING, alarmPhase(m, at(7, 45, 0)));   // long after its minute
+  m.state = STATE_SET_ALARM_HR;
+  TEST_ASSERT_EQUAL(ALARM_RINGING, alarmPhase(m, at(7, 45, 0)));   // on whatever screen
+}
+void test_cancelled_alarm_stays_quiet_for_the_rest_of_its_minute_and_day() {
+  MenuModel m = armed(7, 30); m.alarmDay = 29;   // cancelled on day 29 (see at())
+  TEST_ASSERT_EQUAL(ALARM_IDLE, alarmPhase(m, at(7, 30, 40)));
+  NowInfo nextDay = at(7, 30, 0); nextDay.day = 30;
+  TEST_ASSERT_EQUAL(ALARM_DUE, alarmPhase(m, nextDay));           // and rings again the next day
+}
+void test_cancelling_through_the_menu_silences_the_alarm_phase() {
+  MenuModel m = armed(7, 30); m.alarmTrig = true;
+  MenuInput in = {}; in.clockModeCount = FACES; in.now = at(7, 30, 20); in.pressed = true; in.heldMs = 10;
+  menuStep(m, in);
+  TEST_ASSERT_EQUAL(ALARM_IDLE, alarmPhase(m, in.now));
+}
+void test_setting_a_new_alarm_time_makes_it_ring_today_again() {
+  MenuModel m = armed(7, 30); m.alarmDay = 29; m.state = STATE_SET_ALARM_MIN;
+  click(m, 200);   // finish setting the minutes: clears alarmDay
+  TEST_ASSERT_EQUAL(ALARM_DUE, alarmPhase(m, at(7, 30, 0)));
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_alarm_is_due_at_the_alarm_time);
+  RUN_TEST(test_alarm_is_idle_before_and_after_the_alarm_minute);
+  RUN_TEST(test_alarm_is_idle_when_switched_off);
+  RUN_TEST(test_alarm_does_not_start_while_its_time_is_being_set);
+  RUN_TEST(test_alarm_starts_from_any_other_screen);
+  RUN_TEST(test_alarm_keeps_ringing_until_stopped);
+  RUN_TEST(test_cancelled_alarm_stays_quiet_for_the_rest_of_its_minute_and_day);
+  RUN_TEST(test_cancelling_through_the_menu_silences_the_alarm_phase);
+  RUN_TEST(test_setting_a_new_alarm_time_makes_it_ring_today_again);
   RUN_TEST(test_clock_rotate_changes_mode_and_saves);
   RUN_TEST(test_clock_mode_wraps_at_both_ends);
   RUN_TEST(test_clock_short_click_opens_alarm_screen);

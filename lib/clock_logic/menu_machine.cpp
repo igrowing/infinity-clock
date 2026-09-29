@@ -42,7 +42,7 @@ static void stepAlarm(MenuModel& m, const MenuInput& in, MenuEffects& fx) {
   m.rotaryMove = 0;
   m.alarmTrig = false;
   if (in.released) {
-    if (m.menuTimePressed <= HOLD_TIME_MS) {m.state = STATE_COUNTDOWN; fx.resetJ = true;}
+    if (m.menuTimePressed <= HOLD_TIME_MS) {m.state = STATE_COUNTDOWN; fx.resetSweep = true;}
     else m.state = STATE_SET_ALARM_HR;
   }
 }
@@ -101,11 +101,11 @@ static void stepCountdown(MenuModel& m, const MenuInput& in, MenuEffects& fx) {
       } else {  // Timer off, no time + quick click ==> demo.
         m.state = STATE_DEMO;
         fx.startDemo = true;
-        fx.resetJ = true;
+        fx.resetSweep = true;
       }
     } else {  // Long click ==> reset the timer.
       resetTimer(m);
-      fx.resetJ = true;
+      fx.resetSweep = true;
     }
   } else if (m.rotaryMove != 0) {
     if (m.countDown && m.currentCountDown <= 0) {  // Time is gone + rotated ==> stop countdown and buzzer.
@@ -170,4 +170,14 @@ MenuEffects menuStep(MenuModel& m, const MenuInput& in) {
   if (in.released || m.rotaryMove != 0) m.countTime = false;
   if (in.released) m.menuPressSeen = false;
   return fx;
+}
+
+AlarmPhase alarmPhase(const MenuModel& m, const NowInfo& now) {
+  // alarmDay is the day the alarm was cancelled on: a cancelled alarm must not restart within its minute.
+  if (!m.alarmSet || m.alarmDay == now.day) return ALARM_IDLE;
+  if (m.alarmTrig) return ALARM_RINGING;
+  // Don't alarm while the alarm time is being set.
+  if (m.state == STATE_SET_ALARM_HR || m.state == STATE_SET_ALARM_MIN) return ALARM_IDLE;
+  if (m.alarmMin == now.minute && m.alarmHour == now.hour) return ALARM_DUE;
+  return ALARM_IDLE;
 }

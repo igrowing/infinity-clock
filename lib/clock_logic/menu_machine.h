@@ -47,7 +47,7 @@ struct MenuEffects {
   bool stopBuzzer;            // Stop the buzzer only
   bool waitAfterAlarmCancel;  // Give the user time to release the button
   bool resetSecTimer;         // Restart the sub-second timer
-  bool resetJ;                // Restart the transition animation
+  bool resetSweep;            // Restart the timer's idle sweep animation
   bool startDemo;             // Begin the demo from its first colour
   bool printDateTime;
   bool setTime;               // Write newTime to the RTC
@@ -56,3 +56,12 @@ struct MenuEffects {
 };
 
 MenuEffects menuStep(MenuModel& m, const MenuInput& in);
+
+// What the alarm is doing right now.
+enum AlarmPhase : uint8_t {
+  ALARM_IDLE,     // Off, not the time yet, or already cancelled today
+  ALARM_DUE,      // It is time: start ringing
+  ALARM_RINGING   // Ringing until the user stops it
+};
+
+AlarmPhase alarmPhase(const MenuModel& m, const NowInfo& now);
