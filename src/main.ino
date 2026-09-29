@@ -18,7 +18,7 @@ RTC_DS1307 RTC;     // Establishes the chipset of the Real Time Clock
 
 #define TIMER       1      // Modes of buzzer
 #define ALARM       2
-#define BEEP_TONE   2100   // Hz
+#define BEEP_TONE   700    // Hz
 #define PIN_BUZZER  9      // OC1A (Timer1 hardware output). Must be D9 for the hardware tone.
 #define PIN_LEDS    A0
 #define PIN_MENU    PIN4
