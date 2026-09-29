@@ -11,6 +11,7 @@
 #include <Wire.h> //This is to communicate via I2C. On arduino Uno & Nano use pins A4 for SDA (yellow/orange) and A5 for SCL (green). For other boards ee http://arduino.cc/en/Reference/Wire
 #include <clock_logic.h>  // Pure logic, unit-tested on PC (see test/)
 #include <menu_machine.h>  // Menu state machine, unit-tested on PC
+#include <buzzer_sequencer.h>  // Beep timing, unit-tested on PC
 #include <RTClib.h>           // Include the RTClib library to enable communication with the real time clock.
 #include <Bounce2.h>          // Include the Bounce library for de-bouncing issues with push buttons.
 #include <Encoder.h>          // Include the Encoder library to read the out puts of the rotary encoders
@@ -96,12 +97,7 @@ long previousMillis = 0;
 volatile uint8_t star = 0;
 volatile float starBlinks;
 volatile bool isBuzzerActive;  // Flag to avoid repetitive buzzer calls
-// Buzzer sequencer state
-bool buzzerRunning = false, buzzerToneOn = false;
-uint8_t buzzerBeeps, buzzerBeepIdx, buzzerCycles, buzzerCycleIdx;
-uint16_t buzzerOnMs, buzzerOffMs, buzzerPauseMs;
-unsigned long buzzerNextMs;
-void (*buzzerDone)();
+BuzzerSequencer buzzer;  // Beep timing
 volatile int8_t led_offset;  // Allows rotate clock by 90 segrees left/right 
 
 State state = STATE_CLOCK; // State of the clock, see enum State
@@ -404,46 +400,21 @@ void toneOff() {
   PORTB &= ~_BV(PORTB1);             // Keep buzzer pin low
 }
 
-// Non-blocking beep sequencer: `beeps` beeps per group, `cycles` groups (0 = endless).
-// Calls onDone (if any) after the last group.
-void buzzerUpdate() {
-  if (!buzzerRunning) return;
-  if ((long)(millis() - buzzerNextMs) < 0) return;
-
-  if (buzzerToneOn) {  // End of a beep
-    toneOff();
-    buzzerToneOn = false;
-    if (++buzzerBeepIdx < buzzerBeeps) {
-      buzzerNextMs = millis() + buzzerOffMs;
-    } else {
-      buzzerBeepIdx = 0;
-      if (buzzerCycles && ++buzzerCycleIdx >= buzzerCycles) {
-        buzzerRunning = false;
-        if (buzzerDone) buzzerDone();
-        return;
-      }
-      buzzerNextMs = millis() + buzzerPauseMs;
-    }
-  } else {  // End of a gap
-    toneOn();
-    buzzerToneOn = true;
-    buzzerNextMs = millis() + buzzerOnMs;
+// Carry out what the beep sequencer asked for.
+void applyBuzzerEvent(const BuzzerEvent& e) {
+  if (e.setTone) {
+    if (e.tone) toneOn();
+    else toneOff();
   }
+  if (e.finished) clearBuzzer();  // The timer pattern is over.
 }
 
-void buzzerStart(uint16_t onMs, uint16_t offMs, uint8_t beeps, uint16_t pauseMs, uint8_t cycles, void (*done)()) {
-  buzzerOnMs = onMs; buzzerOffMs = offMs; buzzerBeeps = beeps;
-  buzzerPauseMs = pauseMs; buzzerCycles = cycles; buzzerDone = done;
-  buzzerBeepIdx = 0; buzzerCycleIdx = 0;
-  buzzerRunning = true;
-  toneOn();
-  buzzerToneOn = true;
-  buzzerNextMs = millis() + onMs;
+void buzzerUpdate() {
+  applyBuzzerEvent(sequencerTick(buzzer, millis()));
 }
 
 void buzzerStop() {
-  buzzerRunning = false;
-  buzzerToneOn = false;
+  sequencerStop(buzzer);
   toneOff();
 }
 
@@ -459,11 +430,8 @@ void clearBuzzer() {
 // Enable buzzer sequence only once on reqest until buzzer operation is cleared. Avoid retriggering buzzer.
 void runBuzzer(int mode) {
   if (isBuzzerActive) return;
-  if (TIMER == mode) {
-    buzzerStart(300, 500, 2, 1000, 5, clearBuzzer);  // For end of timer beep 5 double beeps
-  } else {
-    buzzerStart(300, 200, 3, 1000, 0, NULL);  // For alarm beep 3 beeps endlessly (until rotary rotate)
-  }
+  // Timer: 5 double beeps. Alarm: 3 beeps endlessly (until rotary rotate).
+  applyBuzzerEvent(sequencerStart(buzzer, (TIMER == mode) ? TIMER_BEEP : ALARM_BEEP, millis()));
   isBuzzerActive = true;
 }
 
